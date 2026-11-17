@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema POS - Planta y Rutas</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- PANTALLA DE INICIO DE SESIÓN -->
+  <div id="login-screen" class="login-wrapper">
+    <div class="login-card">
+      <div class="brand-badge">POS EN TIEMPO REAL</div>
+      <h1>Control de Ventas<br><span>Planta y Rutas</span></h1>
+      <p>Inicia sesión con tu cuenta de Google para registrar ventas y consultar reportes.</p>
+      
+      <button id="btn-google-login" class="btn-google">
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"/>
+          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"/>
+          <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"/>
+          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"/>
+        </svg>
+        Continuar con Google
+      </button>
+      <p id="login-error" class="error-text hidden"></p>
+    </div>
+  </div>
+
+  <!-- APLICACIÓN PRINCIPAL -->
+  <div id="app-screen" class="app-wrapper hidden">
+    <!-- BARRA SUPERIOR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="logo-dot"></span>
+        <h2>Sistema POS</h2>
+        <nav class="nav-tabs">
+          <button class="nav-btn active" data-tab="pos">Punto de Venta</button>
+          <button class="nav-btn" data-tab="my-sales">Mis Ventas Hoy</button>
+          <button class="nav-btn" data-tab="admin" id="nav-admin-btn">
+            Administrador <span id="admin-lock-icon">🔒</span>
+          </button>
+        </nav>
+      </div>
+      <div class="topbar-right">
+        <div class="user-pill">
+          <img id="user-photo" src="" alt="Avatar" />
+          <div>
+            <strong id="user-name">Usuario</strong>
+            <small id="user-email">correo@ejemplo.com</small>
+          </div>
+        </div>
+        <button id="btn-logout" class="btn-outline-sm">Salir</button>
+      </div>
+    </header>
+
+    <!-- VISTA 1: PUNTO DE VENTA -->
+    <main id="tab-pos" class="tab-content active">
+      <div class="pos-grid">
+        <!-- COLUMNA IZQUIERDA: TARIFAS Y PRECIO ESPECIAL -->
+        <section class="card">
+          <div class="card-header">
+            <h3>1. Selecciona Tarifa y Cantidad</h3>
+            <div class="qty-selector">
+              <span>Cantidad rápida:</span>
+              <button type="button" class="qty-chip active" data-qty="1">+1</button>
+              <button type="button" class="qty-chip" data-qty="2">+2</button>
+              <button type="button" class="qty-chip" data-qty="5">+5</button>
+              <button type="button" class="qty-chip" data-qty="10">+10</button>
+              <button type="button" class="qty-chip" data-qty="20">+20</button>
+            </div>
+          </div>
+
+          <div class="price-cards-grid">
+            <button type="button" class="price-btn planta" data-category="Planta" data-price="11">
+              <span class="tag">En Planta</span>
+              <strong class="amount">$11.00</strong>
+              <small>Precio base directo</small>
+            </button>
+
+            <button type="button" class="price-btn ruta1" data-category="Mayoreo / Ruta 1" data-price="17">
+              <span class="tag">Mayoreo / Ruta 1</span>
+              <strong class="amount">$17.00</strong>
+              <small>Tarifa preferencial ruta</small>
+            </button>
+
+            <button type="button" class="price-btn ruta2" data-category="Ruta 2" data-price="18">
+              <span class="tag">Ruta 2</span>
+              <strong class="amount">$18.00</strong>
+              <small>Tarifa intermedia ruta</small>
+            </button>
+
+            <button type="button" class="price-btn menudeo" data-category="Menudeo / Ruta 3" data-price="20">
+              <span class="tag">Menudeo / Ruta 3</span>
+              <strong class="amount">$20.00</strong>
+              <small>Precio público en ruta</small>
+            </button>
+          </div>
+
+          <!-- APARTADO EXTRA: PRECIO ESPECIAL -->
+          <div class="special-price-box">
+            <h4>Apartado Extra: Precio Especial</h4>
+            <form id="special-price-form" class="special-form">
+              <div class="input-group">
+                <label for="special-label">Concepto / Cliente (Opcional)</label>
+                <input type="text" id="special-label" placeholder="Ej. Cliente especial, convenio..." />
+              </div>
+              <div class="input-group">
+                <label for="special-amount">Precio Unitario ($)</label>
+                <input type="number" id="special-amount" step="0.01" min="0.5" placeholder="0.00" required />
+              </div>
+              <div class="input-group small">
+                <label for="special-qty">Cant.</label>
+                <input type="number" id="special-qty" min="1" value="1" required />
+              </div>
+              <button type="submit" class="btn-secondary">Agregar</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- COLUMNA DERECHA: LISTA DE VENTA ACTUAL (CARRITO) -->
+        <section class="card cart-card">
+          <div class="card-header">
+            <h3>2. Lista de Venta Actual</h3>
+            <button type="button" id="btn-clear-cart" class="btn-text-danger">Vaciar lista</button>
+          </div>
+
+          <div id="cart-items-container" class="cart-list">
+            <div class="empty-state">
+              <p>Aún no has agregado productos a esta venta.</p>
+              <small>Haz clic en una tarifa de la izquierda para comenzar.</small>
+            </div>
+          </div>
+
+          <div class="cart-footer">
+            <div class="input-group">
+              <label for="sale-note">Nota de venta / Ruta / Cliente (Opcional)</label>
+              <input type="text" id="sale-note" placeholder="Ej. Ruta Norte - Tienda La Esquina" />
+            </div>
+
+            <div class="totals-row">
+              <div>
+                <span>Unidades totales:</span>
+                <strong id="cart-total-units">0</strong>
+              </div>
+              <div class="total-money">
+                <span>Total a cobrar:</span>
+                <strong id="cart-total-amount">$0.00</strong>
+              </div>
+            </div>
+
+            <button type="button" id="btn-submit-sale" class="btn-primary-lg" disabled>
+              Enviar a Venta del Día
+            </button>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- VISTA 2: MIS VENTAS DEL DÍA -->
+    <main id="tab-my-sales" class="tab-content">
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <h3>Mis Ventas Registradas Hoy</h3>
+            <p class="subtitle">Resumen en tiempo real de tus envíos de la jornada actual.</p>
+          </div>
+          <div class="kpi-inline">
+            <div class="mini-kpi">
+              <span>Mis Unidades</span>
+              <strong id="my-today-units">0</strong>
+            </div>
+            <div class="mini-kpi highlight">
+              <span>Mi Total Hoy</span>
+              <strong id="my-today-total">$0.00</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Detalle de Productos</th>
+                <th>Nota</th>
+                <th>Unidades</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="my-sales-tbody">
+              <tr><td colspan="5" class="text-center">Cargando ventas de hoy...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- VISTA 3: PANEL DE ADMINISTRADOR -->
+    <main id="tab-admin" class="tab-content">
+      <!-- ALERTA DE ACCESO DENEGADO -->
+      <div id="admin-denied" class="card denied-card hidden">
+        <div class="denied-icon">🚫</div>
+        <h3>Acceso Restringido</h3>
+        <p>Solo el correo de administrador autorizado puede visualizar el corte global y los reportes históricos.</p>
+        <p class="muted">Tu sesión actual: <strong id="denied-current-email"></strong></p>
+        <p class="muted">Correo autorizado configurado: <strong id="denied-admin-email"></strong></p>
+      </div>
+
+      <!-- CONTENIDO DEL ADMINISTRADOR AUTORIZADO -->
+      <div id="admin-panel" class="hidden">
+        <!-- CONFIGURACIÓN DE CORREO ADMIN -->
+        <div class="admin-config-bar card">
+          <div>
+            <strong>Correo de Administrador Autorizado:</strong>
+            <span id="current-admin-display" class="badge-admin">No configurado</span>
+          </div>
+          <form id="admin-email-form" class="inline-form">
+            <input type="email" id="new-admin-email" placeholder="nuevo-admin@gmail.com" required />
+            <button type="submit" class="btn-outline-sm">Actualizar Correo Admin</button>
+          </form>
+        </div>
+
+        <!-- FILTROS DE PERÍODO Y EXPORTACIÓN -->
+        <div class="card filter-bar">
+          <div class="period-buttons">
+            <button class="filter-btn active" data-period="today">Hoy</button>
+            <button class="filter-btn" data-period="week">Esta Semana</button>
+            <button class="filter-btn" data-period="month">Este Mes</button>
+            <button class="filter-btn" data-period="all">Todo el Historial</button>
+          </div>
+          <div class="custom-dates">
+            <input type="date" id="filter-start-date" />
+            <span>a</span>
+            <input type="date" id="filter-end-date" />
+            <button id="btn-apply-dates" class="btn-secondary-sm">Filtrar</button>
+            <button id="btn-export-csv" class="btn-success-sm">Exportar CSV</button>
+          </div>
+        </div>
+
+        <!-- TARJETAS KPI -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span>Ingresos Totales</span>
+            <strong id="kpi-revenue">$0.00</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Unidades Vendidas</span>
+            <strong id="kpi-units">0</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Tickets / Envíos</span>
+            <strong id="kpi-tickets">0</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Ticket Promedio</span>
+            <strong id="kpi-avg">$0.00</strong>
+          </div>
+        </div>
+
+        <!-- DESGLOSE POR TARIFA Y VENDEDOR -->
+        <div class="breakdown-grid">
+          <section class="card">
+            <h4>Desglose por Tarifa ($11 / $17 / $18 / $20 / Especial)</h4>
+            <div id="breakdown-categories" class="breakdown-list"></div>
+          </section>
+          <section class="card">
+            <h4>Ventas por Vendedor / Operador</h4>
+            <div id="breakdown-sellers" class="breakdown-list"></div>
+          </section>
+        </div>
+
+        <!-- TABLA GENERAL DE VENTAS -->
+        <section class="card">
+          <div class="card-header">
+            <h3>Registro Detallado de Ventas</h3>
+            <span id="admin-record-count" class="muted">0 registros</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha y Hora</th>
+                  <th>Vendedor</th>
+                  <th>Desglose</th>
+                  <th>Nota</th>
+                  <th>Unidades</th>
+                  <th>Total</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="admin-sales-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- NOTIFICACIÓN TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- SDK DE FIREBASE (MODULAR V10 VIA CDN) -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
