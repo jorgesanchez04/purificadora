@@ -35,7 +35,7 @@ const firebaseConfig = {
 };
 
 // Correo inicial autorizado como Administrador (puedes cambiarlo también desde la interfaz)
-const DEFAULT_ADMIN_EMAIL = "pinguinotext10@gmail.com";
+const DEFAULT_ADMIN_EMAIL = "jesus181401@gmail.com";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -106,17 +106,7 @@ onAuthStateChanged(auth, async (user) => {
 // 5. CONFIGURACIÓN DEL ADMINISTRADOR POR CORREO ESPECÍFICO
 // =========================================================================
 async function loadAdminConfig() {
-  try {
-    const configRef = doc(db, "settings", "adminConfig");
-    const snap = await getDoc(configRef);
-    if (snap.exists() && snap.data().adminEmail) {
-      authorizedAdminEmail = snap.data().adminEmail.toLowerCase().trim();
-    } else {
-      await setDoc(configRef, { adminEmail: authorizedAdminEmail });
-    }
-  } catch (err) {
-    console.warn("Usando correo admin por defecto:", err);
-  }
+  authorizedAdminEmail = DEFAULT_ADMIN_EMAIL.toLowerCase().trim();
   updateAdminAccessUI();
 }
 
@@ -131,7 +121,6 @@ function updateAdminAccessUI() {
 
   document.getElementById("denied-current-email").textContent = currentUser?.email || "";
   document.getElementById("denied-admin-email").textContent = authorizedAdminEmail;
-  document.getElementById("current-admin-display").textContent = authorizedAdminEmail;
 
   if (isUserAdmin()) {
     lockIcon.textContent = "🔓";
@@ -144,19 +133,6 @@ function updateAdminAccessUI() {
   }
 }
 
-document.getElementById("admin-email-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!isUserAdmin()) return;
-
-  const newEmail = document.getElementById("new-admin-email").value.trim().toLowerCase();
-  if (!newEmail) return;
-
-  await setDoc(doc(db, "settings", "adminConfig"), { adminEmail: newEmail });
-  authorizedAdminEmail = newEmail;
-  document.getElementById("new-admin-email").value = "";
-  updateAdminAccessUI();
-  showToast("Correo de administrador actualizado.");
-});
 
 // =========================================================================
 // 6. NAVEGACIÓN ENTRE PESTAÑAS
@@ -175,14 +151,6 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
 // =========================================================================
 // 7. LÓGICA DEL PUNTO DE VENTA (TARIFAS Y LISTA DE VENTA)
 // =========================================================================
-// Selector de cantidad rápida (+1, +2, +5, +10, +20)
-document.querySelectorAll(".qty-chip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    document.querySelectorAll(".qty-chip").forEach((c) => c.classList.remove("active"));
-    chip.classList.add("active");
-    selectedQuickQty = parseInt(chip.dataset.qty, 10);
-  });
-});
 
 // Botones de tarifas fijas ($11, $17, $18, $20)
 document.querySelectorAll(".price-btn").forEach((btn) => {
