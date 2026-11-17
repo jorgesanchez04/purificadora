@@ -19,7 +19,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // =========================================================================
-// 1. CONFIGURACIÓN DE FIREBASE (Reemplaza con tus credenciales de Firebase)
+// 1. CONFIGURACIÓN DE FIREBASE
 // =========================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyCaYLz3916DtXsKH5YPLAJLaa5E0H5NYEY",
@@ -46,6 +46,7 @@ let currentUser = null;
 const authorizedAdminEmail = DEFAULT_ADMIN_EMAIL.toLowerCase().trim();
 let cart = [];
 let allSales = [];
+let allExpenses = [];
 let currentPeriod = "today";
 
 // =========================================================================
@@ -91,6 +92,9 @@ onAuthStateChanged(auth, (user) => {
 
     updateAdminAccessUI();
     listenToSales();
+    if (isUserAdmin()) {
+      listenToExpenses();
+    }
   } else {
     currentUser = null;
     appScreen.classList.add("hidden");
@@ -282,7 +286,7 @@ btnSubmitSale.addEventListener("click", async () => {
 });
 
 // =========================================================================
-// 8. ESCUCHA EN TIEMPO REAL DE VENTAS Y REPORTES
+// 8. ESCUCHA EN TIEMPO REAL DE VENTAS Y GASTOS
 // =========================================================================
 function listenToSales() {
   const q = query(collection(db, "sales"), orderBy("clientTimestamp", "desc"));
@@ -292,6 +296,43 @@ function listenToSales() {
     renderAdminDashboard();
   });
 }
+
+function listenToExpenses() {
+  const q = query(collection(db, "expenses"), orderBy("clientTimestamp", "desc"));
+  onSnapshot(q, (snapshot) => {
+    allExpenses = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderAdminDashboard();
+  });
+}
+
+// Registrar nuevo gasto (Solo Administrador)
+document.getElementById("expense-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!isUserAdmin()) return;
+
+  const concept = document.getElementById("expense-concept").value.trim();
+  const category = document.getElementById("expense-category").value;
+  const amount = parseFloat(document.getElementById("expense-amount").value);
+
+  if (!concept || isNaN(amount) || amount <= 0) return;
+
+  try {
+    await addDoc(collection(db, "expenses"), {
+      concept,
+      category,
+      amount,
+      createdBy: currentUser.email.toLowerCase(),
+      createdAt: serverTimestamp(),
+      clientTimestamp: Date.now()
+    });
+
+    document.getElementById("expense-concept").value = "";
+    document.getElementById("expense-amount").value = "";
+    showToast("💸 Gasto registrado y descontado del balance");
+  } catch (err) {
+    alert("Error al registrar gasto: " + err.message);
+  }
+});
 
 function getStartOfDay(date = new Date()) {
   const d = new Date(date);
@@ -343,7 +384,7 @@ function renderMyTodaySales() {
 }
 
 // =========================================================================
-// 9. PANEL DE ADMINISTRADOR (FILTROS, KPIS, DESGLOSE Y CSV)
+// 9. PANEL DE ADMINISTRADOR (FILTROS, BALANCE, DESGLOSE Y CSV)
 // =========================================================================
 document.querySelectorAll(".filter-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -360,23 +401,15 @@ document.getElementById("btn-apply-dates").addEventListener("click", () => {
   renderAdminDashboard();
 });
 
-function getFilteredSales() {
+function filterByPeriod(records) {
   const now = new Date();
   const startToday = getStartOfDay(now);
 
-  return allSales.filter((sale) => {
-    const ts = sale.clientTimestamp || 0;
-    if (currentPeriod === "today") {
-      return ts >= startToday;
-    }
-    if (currentPeriod === "week") {
-      const weekAgo = startToday - 6 * 24 * 60 * 60 * 1000;
-      return ts >= weekAgo;
-    }
-    if (currentPeriod === "month") {
-      const firstDayMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-      return ts >= firstDayMonth;
-    }
+  return records.filter((item) => {
+    const ts = item.clientTimestamp || 0;
+    if (currentPeriod === "today") return ts >= startToday;
+    if (currentPeriod === "week") return ts >= startToday - 6 * 24 * 60 * 60 * 1000;
+    if (currentPeriod === "month") return ts >= new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     if (currentPeriod === "custom") {
       const startVal = document.getElementById("filter-start-date").value;
       const endVal = document.getElementById("filter-end-date").value;
@@ -384,20 +417,22 @@ function getFilteredSales() {
       const endMs = endVal ? new Date(endVal + "T23:59:59").getTime() : Infinity;
       return ts >= startMs && ts <= endMs;
     }
-    return true; // "all"
+    return true;
   });
 }
 
 function renderAdminDashboard() {
   if (!isUserAdmin()) return;
 
-  const filtered = getFilteredSales();
+  const filteredSales = filterByPeriod(allSales);
+  const filteredExpenses = filterByPeriod(allExpenses);
+
   let totalRevenue = 0;
   let totalUnits = 0;
   const categoryStats = {};
   const sellerStats = {};
 
-  filtered.forEach((sale) => {
+  filteredSales.forEach((sale) => {
     totalRevenue += sale.totalAmount || 0;
     totalUnits += sale.totalUnits || 0;
 
@@ -414,13 +449,20 @@ function renderAdminDashboard() {
     });
   });
 
+  const totalExpenses = filteredExpenses.reduce((acc, exp) => acc + (exp.amount || 0), 0);
+  const netBalance = totalRevenue - totalExpenses;
+
   document.getElementById("kpi-revenue").textContent = `$${totalRevenue.toFixed(2)}`;
+  document.getElementById("kpi-expenses").textContent = `$${totalExpenses.toFixed(2)}`;
+
+  const balanceEl = document.getElementById("kpi-balance");
+  balanceEl.textContent = `${netBalance < 0 ? "-" : ""}$${Math.abs(netBalance).toFixed(2)}`;
+  balanceEl.className = netBalance >= 0 ? "text-success" : "text-danger";
+
   document.getElementById("kpi-units").textContent = totalUnits;
-  document.getElementById("kpi-tickets").textContent = filtered.length;
-  document.getElementById("kpi-avg").textContent = filtered.length
-    ? `$${(totalRevenue / filtered.length).toFixed(2)}`
-    : "$0.00";
-  document.getElementById("admin-record-count").textContent = `${filtered.length} registros`;
+  document.getElementById("kpi-tickets").textContent = filteredSales.length;
+  document.getElementById("admin-record-count").textContent = `${filteredSales.length} ventas`;
+  document.getElementById("admin-expense-count").textContent = `${filteredExpenses.length} gastos`;
 
   // Render desglose por tarifa
   const catContainer = document.getElementById("breakdown-categories");
@@ -448,9 +490,31 @@ function renderAdminDashboard() {
       )
       .join("") || `<p class="muted">Sin datos en este período.</p>`;
 
-  // Tabla general
+  // Tabla de gastos
+  const expTbody = document.getElementById("admin-expenses-tbody");
+  expTbody.innerHTML =
+    filteredExpenses
+      .map((ex) => {
+        const dateStr = new Date(ex.clientTimestamp).toLocaleString([], {
+          dateStyle: "short",
+          timeStyle: "short"
+        });
+        return `
+          <tr>
+            <td>${dateStr}</td>
+            <td><b>${ex.category}</b></td>
+            <td>${ex.concept}</td>
+            <td class="text-danger"><b>-$${Number(ex.amount).toFixed(2)}</b></td>
+            <td>
+              <button class="btn-del" onclick="window.adminDeleteExpense('${ex.id}')">Borrar</button>
+            </td>
+          </tr>`;
+      })
+      .join("") || `<tr><td colspan="5" class="text-center muted">No hay gastos registrados en este período.</td></tr>`;
+
+  // Tabla general de ventas
   const tbody = document.getElementById("admin-sales-tbody");
-  tbody.innerHTML = filtered
+  tbody.innerHTML = filteredSales
     .map((s) => {
       const dateStr = new Date(s.clientTimestamp).toLocaleString([], {
         dateStyle: "short",
@@ -479,32 +543,52 @@ window.adminDeleteSale = async (saleId) => {
   if (!isUserAdmin()) return;
   if (!confirm("¿Seguro que deseas eliminar este registro de venta?")) return;
   await deleteDoc(doc(db, "sales", saleId));
-  showToast("Registro eliminado");
+  showToast("Venta eliminada");
 };
 
-// Exportar a CSV
-document.getElementById("btn-export-csv").addEventListener("click", () => {
-  const filtered = getFilteredSales();
-  if (!filtered.length) return alert("No hay ventas para exportar en este filtro.");
+window.adminDeleteExpense = async (expenseId) => {
+  if (!isUserAdmin()) return;
+  if (!confirm("¿Seguro que deseas eliminar este gasto?")) return;
+  await deleteDoc(doc(db, "expenses", expenseId));
+  showToast("Gasto eliminado");
+};
 
-  const headers = ["Fecha", "Vendedor", "Correo", "Detalle", "Nota", "Unidades", "Total"];
-  const rows = filtered.map((s) => [
+// Exportar reporte de ventas y gastos a CSV
+document.getElementById("btn-export-csv").addEventListener("click", () => {
+  const filteredSales = filterByPeriod(allSales);
+  const filteredExpenses = filterByPeriod(allExpenses);
+  if (!filteredSales.length && !filteredExpenses.length) {
+    return alert("No hay movimientos para exportar en este filtro.");
+  }
+
+  const headers = ["Tipo", "Fecha", "Responsable / Categoría", "Detalle / Concepto", "Nota", "Unidades", "Monto"];
+  const saleRows = filteredSales.map((s) => [
+    `"INGRESO"`,
     `"${new Date(s.clientTimestamp).toLocaleString()}"`,
-    `"${s.sellerName}"`,
-    `"${s.sellerEmail}"`,
+    `"${s.sellerName} (${s.sellerEmail})"`,
     `"${(s.items || []).map((i) => `${i.qty}x ${i.category} ($${i.unitPrice})`).join(" | ")}"`,
     `"${(s.note || "").replace(/"/g, '""')}"`,
     s.totalUnits,
     s.totalAmount.toFixed(2)
   ]);
 
+  const expenseRows = filteredExpenses.map((ex) => [
+    `"GASTO"`,
+    `"${new Date(ex.clientTimestamp).toLocaleString()}"`,
+    `"${ex.category}"`,
+    `"${ex.concept.replace(/"/g, '""')}"`,
+    `"-"`,
+    0,
+    (-ex.amount).toFixed(2)
+  ]);
+
   const csvContent =
     "data:text/csv;charset=utf-8," +
-    [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    [headers.join(","), ...saleRows.map((r) => r.join(",")), ...expenseRows.map((r) => r.join(","))].join("\n");
 
   const link = document.createElement("a");
   link.setAttribute("href", encodeURI(csvContent));
-  link.setAttribute("download", `reporte_ventas_${currentPeriod}.csv`);
+  link.setAttribute("download", `balance_pos_${currentPeriod}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

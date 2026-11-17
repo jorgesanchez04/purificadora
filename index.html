@@ -218,11 +218,19 @@
           </div>
         </div>
 
-        <!-- TARJETAS KPI -->
+        <!-- TARJETAS KPI CON BALANCE -->
         <div class="kpi-grid">
           <div class="kpi-card">
             <span>Ingresos Totales</span>
-            <strong id="kpi-revenue">$0.00</strong>
+            <strong id="kpi-revenue" class="text-success">$0.00</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Gastos Totales</span>
+            <strong id="kpi-expenses" class="text-danger">$0.00</strong>
+          </div>
+          <div class="kpi-card balance-card">
+            <span>Balance Neto (Ganancia)</span>
+            <strong id="kpi-balance">$0.00</strong>
           </div>
           <div class="kpi-card">
             <span>Unidades Vendidas</span>
@@ -232,11 +240,36 @@
             <span>Tickets / Envíos</span>
             <strong id="kpi-tickets">0</strong>
           </div>
-          <div class="kpi-card">
-            <span>Ticket Promedio</span>
-            <strong id="kpi-avg">$0.00</strong>
-          </div>
         </div>
+
+        <!-- REGISTRO DE GASTOS DEL ADMINISTRADOR -->
+        <section class="card expense-box">
+          <div class="card-header">
+            <h3>Registrar Nuevo Gasto</h3>
+            <span class="muted">Se descontará del balance según la fecha del filtro</span>
+          </div>
+          <form id="expense-form" class="expense-form">
+            <div class="input-group">
+              <label for="expense-concept">Concepto del Gasto</label>
+              <input type="text" id="expense-concept" placeholder="Ej. Gasolina ruta, hielo, bolsas, luz..." required />
+            </div>
+            <div class="input-group">
+              <label for="expense-category">Categoría</label>
+              <select id="expense-category">
+                <option value="Gasolina / Ruta">Gasolina / Ruta</option>
+                <option value="Insumos / Planta">Insumos / Planta</option>
+                <option value="Nómina / Comisiones">Nómina / Comisiones</option>
+                <option value="Mantenimiento">Mantenimiento</option>
+                <option value="Otros">Otros</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label for="expense-amount">Monto ($)</label>
+              <input type="number" id="expense-amount" step="0.01" min="0.5" placeholder="0.00" required />
+            </div>
+            <button type="submit" class="btn-danger">Registrar Gasto</button>
+          </form>
+        </section>
 
         <!-- DESGLOSE POR TARIFA Y VENDEDOR -->
         <div class="breakdown-grid">
@@ -249,6 +282,28 @@
             <div id="breakdown-sellers" class="breakdown-list"></div>
           </section>
         </div>
+
+        <!-- TABLA DE GASTOS REGISTRADOS -->
+        <section class="card">
+          <div class="card-header">
+            <h3>Historial de Gastos del Período</h3>
+            <span id="admin-expense-count" class="muted">0 gastos</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha y Hora</th>
+                  <th>Categoría</th>
+                  <th>Concepto</th>
+                  <th>Monto</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="admin-expenses-tbody"></tbody>
+            </table>
+          </div>
+        </section>
 
         <!-- TABLA GENERAL DE VENTAS -->
         <section class="card">
