@@ -49,6 +49,11 @@ let allSales = [];
 let allExpenses = [];
 let currentPeriod = "today";
 
+// Instancias de gráficas Chart.js
+let trendChartInstance = null;
+let plantRoutesChartInstance = null;
+let expensesRoutesChartInstance = null;
+
 // =========================================================================
 // 3. ELEMENTOS DEL DOM
 // =========================================================================
@@ -124,6 +129,7 @@ function updateAdminAccessUI() {
     lockIcon.textContent = "🔓";
     deniedCard.classList.add("hidden");
     adminPanel.classList.remove("hidden");
+    renderAdminDashboard();
   } else {
     lockIcon.textContent = "🔒";
     deniedCard.classList.remove("hidden");
@@ -132,7 +138,7 @@ function updateAdminAccessUI() {
 }
 
 // =========================================================================
-// 6. NAVEGACIÓN ENTRE PESTAÑAS
+// 6. NAVEGACIÓN ENTRE PESTAÑAS PRINCIPALES Y SUB-VENTANAS DE ADMIN
 // =========================================================================
 document.querySelectorAll(".nav-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -145,10 +151,25 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
   });
 });
 
+// Sub-ventanas internas dentro de Administrador (Ventas / Gastos / Estadísticas)
+document.querySelectorAll(".admin-subtab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".admin-subtab-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".admin-subtab-content").forEach((c) => c.classList.remove("active"));
+
+    btn.classList.add("active");
+    document.getElementById(`admin-sub-${btn.dataset.subtab}`).classList.add("active");
+
+    // Re-renderizar gráficas cuando se abre la pestaña de estadísticas para ajustar su tamaño
+    if (btn.dataset.subtab === "stats") {
+      renderAdminDashboard();
+    }
+  });
+});
+
 // =========================================================================
 // 7. LÓGICA DEL PUNTO DE VENTA (TARIFAS Y LISTA DE VENTA)
 // =========================================================================
-// Botones de tarifas fijas ($11, $17, $18, $20) - suman 1 unidad por clic
 document.querySelectorAll(".price-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     const category = btn.dataset.category;
@@ -157,7 +178,6 @@ document.querySelectorAll(".price-btn").forEach((btn) => {
   });
 });
 
-// Formulario de Precio Especial
 document.getElementById("special-price-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const labelInput = document.getElementById("special-label").value.trim();
@@ -251,7 +271,6 @@ function renderCart() {
 window.posChangeQty = updateCartItemQty;
 window.posRemoveItem = removeCartItem;
 
-// Enviar venta a Firestore ("Venta del día")
 btnSubmitSale.addEventListener("click", async () => {
   if (cart.length === 0 || !currentUser) return;
 
@@ -305,7 +324,6 @@ function listenToExpenses() {
   });
 }
 
-// Registrar nuevo gasto (Solo Administrador)
 document.getElementById("expense-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!isUserAdmin()) return;
@@ -384,7 +402,7 @@ function renderMyTodaySales() {
 }
 
 // =========================================================================
-// 9. PANEL DE ADMINISTRADOR (FILTROS, BALANCE, DESGLOSE Y CSV)
+// 9. PANEL DE ADMINISTRADOR (FILTROS, BALANCE, ESTADÍSTICAS Y CSV)
 // =========================================================================
 document.querySelectorAll(".filter-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -452,6 +470,7 @@ function renderAdminDashboard() {
   const totalExpenses = filteredExpenses.reduce((acc, exp) => acc + (exp.amount || 0), 0);
   const netBalance = totalRevenue - totalExpenses;
 
+  // KPIs principales
   document.getElementById("kpi-revenue").textContent = `$${totalRevenue.toFixed(2)}`;
   document.getElementById("kpi-expenses").textContent = `$${totalExpenses.toFixed(2)}`;
 
@@ -463,6 +482,9 @@ function renderAdminDashboard() {
   document.getElementById("kpi-tickets").textContent = filteredSales.length;
   document.getElementById("admin-record-count").textContent = `${filteredSales.length} ventas`;
   document.getElementById("admin-expense-count").textContent = `${filteredExpenses.length} gastos`;
+
+  // Render Sub-ventana de Estadísticas y Gráficas
+  renderStatisticsAndCharts(filteredSales, filteredExpenses, totalRevenue, totalExpenses, totalUnits);
 
   // Render desglose por tarifa
   const catContainer = document.getElementById("breakdown-categories");
@@ -537,6 +559,153 @@ function renderAdminDashboard() {
         </tr>`;
     })
     .join("");
+}
+
+// =========================================================================
+// 10. CÁLCULO DE INDICADORES Y GRÁFICAS (CHART.JS)
+// =========================================================================
+function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses, totalUnits) {
+  // 1. Indicadores solicitados
+  const avgUnitPrice = totalUnits > 0 ? totalRevenue / totalUnits : 0;
+  const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue) * 100 : 0;
+  const avgTicket = sales.length > 0 ? totalRevenue / sales.length : 0;
+
+  document.getElementById("stat-avg-unit-price").textContent = `$${avgUnitPrice.toFixed(2)}`;
+
+  const marginEl = document.getElementById("stat-profit-margin");
+  marginEl.textContent = `${profitMargin.toFixed(1)}%`;
+  marginEl.className = profitMargin >= 0 ? "text-success" : "text-danger";
+
+  document.getElementById("stat-avg-ticket").textContent = `$${avgTicket.toFixed(2)}`;
+
+  if (typeof Chart === "undefined") return;
+
+  // 2. Gráfica 1: Tendencia Ingresos vs Gastos
+  const dailyMap = {};
+  const formatBucket = (ts) => {
+    const d = new Date(ts);
+    if (currentPeriod === "today") {
+      return `${String(d.getHours()).padStart(2, "0")}:00`;
+    }
+    return d.toLocaleDateString([], { day: "2-digit", month: "short" });
+  };
+
+  [...sales].reverse().forEach((s) => {
+    const key = formatBucket(s.clientTimestamp);
+    if (!dailyMap[key]) dailyMap[key] = { income: 0, expense: 0 };
+    dailyMap[key].income += s.totalAmount || 0;
+  });
+
+  [...expenses].reverse().forEach((ex) => {
+    const key = formatBucket(ex.clientTimestamp);
+    if (!dailyMap[key]) dailyMap[key] = { income: 0, expense: 0 };
+    dailyMap[key].expense += ex.amount || 0;
+  });
+
+  const trendLabels = Object.keys(dailyMap);
+  const incomeData = trendLabels.map((k) => dailyMap[k].income);
+  const expenseData = trendLabels.map((k) => dailyMap[k].expense);
+
+  if (trendChartInstance) trendChartInstance.destroy();
+  trendChartInstance = new Chart(document.getElementById("chart-trend"), {
+    type: "bar",
+    data: {
+      labels: trendLabels.length ? trendLabels : ["Sin movimientos"],
+      datasets: [
+        {
+          label: "Ingresos ($)",
+          data: incomeData.length ? incomeData : [0],
+          backgroundColor: "#16a34a",
+          borderRadius: 6
+        },
+        {
+          label: "Gastos ($)",
+          data: expenseData.length ? expenseData : [0],
+          backgroundColor: "#dc2626",
+          borderRadius: 6
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom" } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+
+  // 3. Gráfica 2: Mezcla de Ventas (Planta vs Rutas vs Especial)
+  let plantaMoney = 0;
+  let ruta1Money = 0;
+  let ruta2Money = 0;
+  let ruta3Money = 0;
+  let especialMoney = 0;
+
+  sales.forEach((s) => {
+    (s.items || []).forEach((item) => {
+      const sub = item.qty * item.unitPrice;
+      if (item.category === "Planta") plantaMoney += sub;
+      else if (item.category.includes("Ruta 1")) ruta1Money += sub;
+      else if (item.category.includes("Ruta 2")) ruta2Money += sub;
+      else if (item.category.includes("Ruta 3")) ruta3Money += sub;
+      else especialMoney += sub;
+    });
+  });
+
+  const mixLabels = ["Planta ($11)", "Ruta 1 ($17)", "Ruta 2 ($18)", "Ruta 3 ($20)", "Especial"];
+  const mixValues = [plantaMoney, ruta1Money, ruta2Money, ruta3Money, especialMoney];
+  const hasMixData = mixValues.some((v) => v > 0);
+
+  if (plantRoutesChartInstance) plantRoutesChartInstance.destroy();
+  plantRoutesChartInstance = new Chart(document.getElementById("chart-plant-vs-routes"), {
+    type: "doughnut",
+    data: {
+      labels: hasMixData ? mixLabels : ["Sin ventas"],
+      datasets: [
+        {
+          data: hasMixData ? mixValues : [1],
+          backgroundColor: hasMixData
+            ? ["#10b981", "#2563eb", "#eab308", "#ec4899", "#8b5cf6"]
+            : ["#e2e8f0"]
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } } }
+    }
+  });
+
+  // 4. Gráfica 3: Distribución de Gastos (Gastos de Ruta vs Planta / Generales)
+  const expByCat = {};
+  expenses.forEach((ex) => {
+    expByCat[ex.category] = (expByCat[ex.category] || 0) + (ex.amount || 0);
+  });
+
+  const expLabels = Object.keys(expByCat);
+  const expValues = expLabels.map((k) => expByCat[k]);
+
+  if (expensesRoutesChartInstance) expensesRoutesChartInstance.destroy();
+  expensesRoutesChartInstance = new Chart(document.getElementById("chart-expenses-routes"), {
+    type: "doughnut",
+    data: {
+      labels: expLabels.length ? expLabels : ["Sin gastos"],
+      datasets: [
+        {
+          data: expValues.length ? expValues : [1],
+          backgroundColor: expValues.length
+            ? ["#ef4444", "#f97316", "#f59e0b", "#3b82f6", "#14b8a6", "#64748b"]
+            : ["#e2e8f0"]
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } } }
+    }
+  });
 }
 
 window.adminDeleteSale = async (saleId) => {

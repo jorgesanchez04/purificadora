@@ -201,7 +201,7 @@
 
       <!-- CONTENIDO DEL ADMINISTRADOR AUTORIZADO -->
       <div id="admin-panel" class="hidden">
-        <!-- FILTROS DE PERÍODO Y EXPORTACIÓN -->
+        <!-- FILTROS DE PERÍODO Y EXPORTACIÓN (COMPARTIDO PARA LAS 3 VENTANAS) -->
         <div class="card filter-bar">
           <div class="period-buttons">
             <button class="filter-btn active" data-period="today">Hoy</button>
@@ -218,7 +218,7 @@
           </div>
         </div>
 
-        <!-- TARJETAS KPI CON BALANCE -->
+        <!-- TARJETAS KPI GLOBALES -->
         <div class="kpi-grid">
           <div class="kpi-card">
             <span>Ingresos Totales</span>
@@ -242,92 +242,170 @@
           </div>
         </div>
 
-        <!-- REGISTRO DE GASTOS DEL ADMINISTRADOR -->
-        <section class="card expense-box">
-          <div class="card-header">
-            <h3>Registrar Nuevo Gasto</h3>
-            <span class="muted">Se descontará del balance según la fecha del filtro</span>
-          </div>
-          <form id="expense-form" class="expense-form">
-            <div class="input-group">
-              <label for="expense-concept">Concepto del Gasto</label>
-              <input type="text" id="expense-concept" placeholder="Ej. Gasolina ruta, hielo, bolsas, luz..." required />
-            </div>
-            <div class="input-group">
-              <label for="expense-category">Categoría</label>
-              <select id="expense-category">
-                <option value="Gasolina / Ruta">Gasolina / Ruta</option>
-                <option value="Insumos / Planta">Insumos / Planta</option>
-                <option value="Nómina / Comisiones">Nómina / Comisiones</option>
-                <option value="Mantenimiento">Mantenimiento</option>
-                <option value="Otros">Otros</option>
-              </select>
-            </div>
-            <div class="input-group">
-              <label for="expense-amount">Monto ($)</label>
-              <input type="number" id="expense-amount" step="0.01" min="0.5" placeholder="0.00" required />
-            </div>
-            <button type="submit" class="btn-danger">Registrar Gasto</button>
-          </form>
-        </section>
+        <!-- NAVEGACIÓN DE SUB-VENTANAS DEL ADMINISTRADOR -->
+        <div class="admin-subtabs">
+          <button type="button" class="admin-subtab-btn active" data-subtab="sales">
+            📊 Ventas y Desglose
+          </button>
+          <button type="button" class="admin-subtab-btn" data-subtab="expenses">
+            💸 Gastos y Egresos
+          </button>
+          <button type="button" class="admin-subtab-btn" data-subtab="stats">
+            📈 Estadísticas y Gráficas
+          </button>
+        </div>
 
-        <!-- DESGLOSE POR TARIFA Y VENDEDOR -->
-        <div class="breakdown-grid">
+        <!-- SUB-VENTANA A: VENTAS Y DESGLOSE -->
+        <div id="admin-sub-sales" class="admin-subtab-content active">
+          <div class="breakdown-grid">
+            <section class="card">
+              <h4>Desglose por Tarifa ($11 / $17 / $18 / $20 / Especial)</h4>
+              <div id="breakdown-categories" class="breakdown-list"></div>
+            </section>
+            <section class="card">
+              <h4>Ventas por Vendedor / Operador</h4>
+              <div id="breakdown-sellers" class="breakdown-list"></div>
+            </section>
+          </div>
+
           <section class="card">
-            <h4>Desglose por Tarifa ($11 / $17 / $18 / $20 / Especial)</h4>
-            <div id="breakdown-categories" class="breakdown-list"></div>
-          </section>
-          <section class="card">
-            <h4>Ventas por Vendedor / Operador</h4>
-            <div id="breakdown-sellers" class="breakdown-list"></div>
+            <div class="card-header">
+              <h3>Registro Detallado de Ventas</h3>
+              <span id="admin-record-count" class="muted">0 ventas</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Fecha y Hora</th>
+                    <th>Vendedor</th>
+                    <th>Desglose</th>
+                    <th>Nota</th>
+                    <th>Unidades</th>
+                    <th>Total</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-sales-tbody"></tbody>
+              </table>
+            </div>
           </section>
         </div>
 
-        <!-- TABLA DE GASTOS REGISTRADOS -->
-        <section class="card">
-          <div class="card-header">
-            <h3>Historial de Gastos del Período</h3>
-            <span id="admin-expense-count" class="muted">0 gastos</span>
-          </div>
-          <div class="table-responsive">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Fecha y Hora</th>
-                  <th>Categoría</th>
-                  <th>Concepto</th>
-                  <th>Monto</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody id="admin-expenses-tbody"></tbody>
-            </table>
-          </div>
-        </section>
+        <!-- SUB-VENTANA B: GASTOS Y EGRESOS -->
+        <div id="admin-sub-expenses" class="admin-subtab-content">
+          <section class="card expense-box">
+            <div class="card-header">
+              <h3>Registrar Nuevo Gasto</h3>
+              <span class="muted">Se descontará automáticamente del balance neto</span>
+            </div>
+            <form id="expense-form" class="expense-form">
+              <div class="input-group">
+                <label for="expense-concept">Concepto del Gasto</label>
+                <input type="text" id="expense-concept" placeholder="Ej. Gasolina ruta 1, sellos, luz planta..." required />
+              </div>
+              <div class="input-group">
+                <label for="expense-category">Tipo / Destino del Gasto</label>
+                <select id="expense-category">
+                  <option value="Gasolina / Ruta">Gasolina / Ruta</option>
+                  <option value="Viáticos / Comisiones Ruta">Viáticos / Comisiones Ruta</option>
+                  <option value="Mantenimiento Vehículos / Ruta">Mantenimiento Vehículos / Ruta</option>
+                  <option value="Insumos / Planta">Insumos / Planta</option>
+                  <option value="Servicios / Planta">Servicios / Planta</option>
+                  <option value="Nómina / Otros">Nómina / Otros</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label for="expense-amount">Monto ($)</label>
+                <input type="number" id="expense-amount" step="0.01" min="0.5" placeholder="0.00" required />
+              </div>
+              <button type="submit" class="btn-danger">Registrar Gasto</button>
+            </form>
+          </section>
 
-        <!-- TABLA GENERAL DE VENTAS -->
-        <section class="card">
-          <div class="card-header">
-            <h3>Registro Detallado de Ventas</h3>
-            <span id="admin-record-count" class="muted">0 registros</span>
+          <section class="card">
+            <div class="card-header">
+              <h3>Historial de Gastos del Período</h3>
+              <span id="admin-expense-count" class="muted">0 gastos</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Fecha y Hora</th>
+                    <th>Categoría</th>
+                    <th>Concepto</th>
+                    <th>Monto</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-expenses-tbody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- SUB-VENTANA C: ESTADÍSTICAS Y GRÁFICAS -->
+        <div id="admin-sub-stats" class="admin-subtab-content">
+          <!-- INDICADORES ANALÍTICOS -->
+          <div class="stats-mini-grid">
+            <div class="stat-pill">
+              <span>Precio Promedio Ponderado / Unidad</span>
+              <strong id="stat-avg-unit-price">$0.00</strong>
+              <small class="muted">Ingresos ÷ Unidades vendidas</small>
+            </div>
+            <div class="stat-pill">
+              <span>Margen de Utilidad Neta</span>
+              <strong id="stat-profit-margin">0.0%</strong>
+              <small class="muted">(Ingresos − Gastos) ÷ Ingresos</small>
+            </div>
+            <div class="stat-pill">
+              <span>Ticket Promedio</span>
+              <strong id="stat-avg-ticket">$0.00</strong>
+              <small class="muted">Promedio cobrado por envío</small>
+            </div>
           </div>
-          <div class="table-responsive">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Fecha y Hora</th>
-                  <th>Vendedor</th>
-                  <th>Desglose</th>
-                  <th>Nota</th>
-                  <th>Unidades</th>
-                  <th>Total</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody id="admin-sales-tbody"></tbody>
-            </table>
+
+          <!-- GRÁFICA PRINCIPAL: TENDENCIA INGRESOS VS GASTOS -->
+          <section class="card">
+            <div class="card-header">
+              <div>
+                <h3>Tendencia: Ingresos vs. Gastos</h3>
+                <p class="subtitle">Comparativa cronológica de flujo de efectivo en el período filtrado</p>
+              </div>
+            </div>
+            <div class="canvas-wrapper-lg">
+              <canvas id="chart-trend"></canvas>
+            </div>
+          </section>
+
+          <!-- GRÁFICAS COMPARATIVAS: MEZCLA PLANTA VS RUTAS Y GASTOS VS RUTAS -->
+          <div class="charts-grid-2">
+            <section class="card">
+              <div class="card-header">
+                <div>
+                  <h4>Mezcla de Ventas: Planta vs. Rutas</h4>
+                  <p class="subtitle">Participación de ingresos por canal de venta</p>
+                </div>
+              </div>
+              <div class="canvas-wrapper">
+                <canvas id="chart-plant-vs-routes"></canvas>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-header">
+                <div>
+                  <h4>Distribución de Gastos: Rutas vs. Operación</h4>
+                  <p class="subtitle">Comparativa entre gastos de ruta y gastos de planta/generales</p>
+                </div>
+              </div>
+              <div class="canvas-wrapper">
+                <canvas id="chart-expenses-routes"></canvas>
+              </div>
+            </section>
           </div>
-        </section>
+        </div>
       </div>
     </main>
   </div>
@@ -335,6 +413,8 @@
   <!-- NOTIFICACIÓN TOAST -->
   <div id="toast" class="toast hidden"></div>
 
+  <!-- CHART.JS PARA GRÁFICAS -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <!-- SDK DE FIREBASE (MODULAR V10 VIA CDN) -->
   <script type="module" src="app.js"></script>
 </body>
