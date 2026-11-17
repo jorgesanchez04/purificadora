@@ -12,13 +12,10 @@ import {
   addDoc,
   deleteDoc,
   doc,
-  getDoc,
-  setDoc,
   onSnapshot,
   query,
   orderBy,
-  serverTimestamp,
-  Timestamp
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // =========================================================================
@@ -34,8 +31,8 @@ const firebaseConfig = {
   measurementId: "G-NX9WBHR7Q6"
 };
 
-// Correo inicial autorizado como Administrador (puedes cambiarlo también desde la interfaz)
-const DEFAULT_ADMIN_EMAIL = "jesus181401@gmail.com";
+// Correo fijo autorizado como Administrador
+const DEFAULT_ADMIN_EMAIL = "pinguinotext10@gmail.com";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -46,8 +43,7 @@ const provider = new GoogleAuthProvider();
 // 2. ESTADO GLOBAL DE LA APLICACIÓN
 // =========================================================================
 let currentUser = null;
-let authorizedAdminEmail = DEFAULT_ADMIN_EMAIL.toLowerCase();
-let selectedQuickQty = 1;
+const authorizedAdminEmail = DEFAULT_ADMIN_EMAIL.toLowerCase().trim();
 let cart = [];
 let allSales = [];
 let currentPeriod = "today";
@@ -83,7 +79,7 @@ btnGoogleLogin.addEventListener("click", async () => {
 
 btnLogout.addEventListener("click", () => signOut(auth));
 
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, (user) => {
   if (user) {
     currentUser = user;
     document.getElementById("user-name").textContent = user.displayName || "Operador";
@@ -93,7 +89,7 @@ onAuthStateChanged(auth, async (user) => {
     loginScreen.classList.add("hidden");
     appScreen.classList.remove("hidden");
 
-    await loadAdminConfig();
+    updateAdminAccessUI();
     listenToSales();
   } else {
     currentUser = null;
@@ -103,13 +99,8 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 // =========================================================================
-// 5. CONFIGURACIÓN DEL ADMINISTRADOR POR CORREO ESPECÍFICO
+// 5. VALIDACIÓN DEL ADMINISTRADOR POR CORREO FIJO
 // =========================================================================
-async function loadAdminConfig() {
-  authorizedAdminEmail = DEFAULT_ADMIN_EMAIL.toLowerCase().trim();
-  updateAdminAccessUI();
-}
-
 function isUserAdmin() {
   return currentUser && currentUser.email.toLowerCase() === authorizedAdminEmail;
 }
@@ -119,8 +110,11 @@ function updateAdminAccessUI() {
   const deniedCard = document.getElementById("admin-denied");
   const adminPanel = document.getElementById("admin-panel");
 
-  document.getElementById("denied-current-email").textContent = currentUser?.email || "";
-  document.getElementById("denied-admin-email").textContent = authorizedAdminEmail;
+  const deniedCurrentEl = document.getElementById("denied-current-email");
+  const deniedAdminEl = document.getElementById("denied-admin-email");
+
+  if (deniedCurrentEl) deniedCurrentEl.textContent = currentUser?.email || "";
+  if (deniedAdminEl) deniedAdminEl.textContent = authorizedAdminEmail;
 
   if (isUserAdmin()) {
     lockIcon.textContent = "🔓";
@@ -132,7 +126,6 @@ function updateAdminAccessUI() {
     adminPanel.classList.add("hidden");
   }
 }
-
 
 // =========================================================================
 // 6. NAVEGACIÓN ENTRE PESTAÑAS
@@ -151,13 +144,12 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
 // =========================================================================
 // 7. LÓGICA DEL PUNTO DE VENTA (TARIFAS Y LISTA DE VENTA)
 // =========================================================================
-
-// Botones de tarifas fijas ($11, $17, $18, $20)
+// Botones de tarifas fijas ($11, $17, $18, $20) - suman 1 unidad por clic
 document.querySelectorAll(".price-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     const category = btn.dataset.category;
     const price = parseFloat(btn.dataset.price);
-    addItemToCart(category, price, selectedQuickQty);
+    addItemToCart(category, price, 1);
   });
 });
 
@@ -252,7 +244,6 @@ function renderCart() {
   btnSubmitSale.disabled = false;
 }
 
-// Exponer funciones al ámbito global para los botones inline del carrito
 window.posChangeQty = updateCartItemQty;
 window.posRemoveItem = removeCartItem;
 
