@@ -32,7 +32,7 @@ const firebaseConfig = {
 };
 
 // Correo fijo autorizado como Administrador
-const DEFAULT_ADMIN_EMAIL = "pinguinotext10@gmail.com";
+const DEFAULT_ADMIN_EMAIL = "jesus181401@gmail.com";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
