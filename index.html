@@ -79,36 +79,14 @@
     <!-- VISTA 1: PUNTO DE VENTA -->
     <main id="tab-pos" class="tab-content active">
       <div class="pos-grid">
-        <!-- COLUMNA IZQUIERDA: TARIFAS Y PRECIO ESPECIAL -->
+        <!-- COLUMNA IZQUIERDA: ARTÍCULOS DINÁMICOS Y PRECIO ESPECIAL -->
         <section class="card">
           <div class="card-header">
-            <h3>1. Selecciona Tarifa</h3>
+            <h3>1. Selecciona Artículo / Tarifa</h3>
           </div>
 
-          <div class="price-cards-grid">
-            <button type="button" class="price-btn planta" data-category="Planta" data-price="11">
-              <span class="tag">En Planta</span>
-              <strong class="amount">$11.00</strong>
-              <small>Precio base directo</small>
-            </button>
-
-            <button type="button" class="price-btn ruta1" data-category="Mayoreo / Ruta 1" data-price="17">
-              <span class="tag">Mayoreo / Ruta 1</span>
-              <strong class="amount">$17.00</strong>
-              <small>Tarifa preferencial ruta</small>
-            </button>
-
-            <button type="button" class="price-btn ruta2" data-category="Ruta 2" data-price="18">
-              <span class="tag">Ruta 2</span>
-              <strong class="amount">$18.00</strong>
-              <small>Tarifa intermedia ruta</small>
-            </button>
-
-            <button type="button" class="price-btn menudeo" data-category="Menudeo / Ruta 3" data-price="20">
-              <span class="tag">Menudeo / Ruta 3</span>
-              <strong class="amount">$20.00</strong>
-              <small>Precio público en ruta</small>
-            </button>
+          <div id="pos-products-grid" class="price-cards-grid">
+            <p class="muted">Cargando artículos disponibles...</p>
           </div>
 
           <!-- APARTADO EXTRA: PRECIO ESPECIAL -->
@@ -142,7 +120,7 @@
           <div id="cart-items-container" class="cart-list">
             <div class="empty-state">
               <p>Aún no has agregado productos a esta venta.</p>
-              <small>Haz clic en una tarifa de la izquierda para comenzar.</small>
+              <small>Haz clic en un artículo de la izquierda para comenzar.</small>
             </div>
           </div>
 
@@ -223,7 +201,7 @@
 
       <!-- CONTENIDO DEL ADMINISTRADOR AUTORIZADO -->
       <div id="admin-panel" class="hidden">
-        <!-- FILTROS DE PERÍODO Y EXPORTACIÓN (COMPARTIDO PARA LAS VENTANAS) -->
+        <!-- FILTROS DE PERÍODO Y EXPORTACIÓN -->
         <div class="card filter-bar">
           <div class="period-buttons">
             <button class="filter-btn active" data-period="today">Hoy</button>
@@ -275,6 +253,9 @@
           <button type="button" class="admin-subtab-btn" data-subtab="stats">
             📈 Estadísticas y Gráficas
           </button>
+          <button type="button" class="admin-subtab-btn" data-subtab="products">
+            🏷️ Artículos / Tarifas
+          </button>
           <button type="button" class="admin-subtab-btn" data-subtab="users">
             👥 Repartidores <span id="pending-users-badge" class="badge-count hidden">0</span>
           </button>
@@ -284,7 +265,7 @@
         <div id="admin-sub-sales" class="admin-subtab-content active">
           <div class="breakdown-grid">
             <section class="card">
-              <h4>Desglose por Tarifa ($11 / $17 / $18 / $20 / Especial)</h4>
+              <h4>Desglose por Artículo / Tarifa</h4>
               <div id="breakdown-categories" class="breakdown-list"></div>
             </section>
             <section class="card">
@@ -372,7 +353,6 @@
 
         <!-- SUB-VENTANA C: ESTADÍSTICAS Y GRÁFICAS -->
         <div id="admin-sub-stats" class="admin-subtab-content">
-          <!-- INDICADORES ANALÍTICOS -->
           <div class="stats-mini-grid">
             <div class="stat-pill">
               <span>Precio Promedio Ponderado / Unidad</span>
@@ -401,7 +381,6 @@
             </div>
           </div>
 
-          <!-- FILA 1 DE GRÁFICAS: TENDENCIA Y TICKET PROMEDIO PLANTA VS RUTAS -->
           <div class="charts-grid-trend-ticket">
             <section class="card">
               <div class="card-header">
@@ -428,7 +407,6 @@
             </section>
           </div>
 
-          <!-- FILA 2 DE GRÁFICAS: MEZCLA PLANTA VS RUTAS Y GASTOS VS RUTAS -->
           <div class="charts-grid-2">
             <section class="card">
               <div class="card-header">
@@ -456,10 +434,73 @@
           </div>
         </div>
 
-        <!-- SUB-VENTANA D: GESTIÓN DE REPARTIDORES Y ACCESOS -->
+        <!-- SUB-VENTANA D: CATÁLOGO DE ARTÍCULOS Y TARIFAS -->
+        <div id="admin-sub-products" class="admin-subtab-content">
+          <section class="card">
+            <div class="card-header">
+              <div>
+                <h3>Agregar Nuevo Artículo / Tarifa</h3>
+                <p class="subtitle">Los cambios aparecen al instante en la pantalla de todos los repartidores</p>
+              </div>
+            </div>
+            <form id="product-form" class="product-admin-form">
+              <div class="input-group">
+                <label for="prod-name">Nombre del Artículo / Tarifa</label>
+                <input type="text" id="prod-name" placeholder="Ej. Garrafón Nuevo, Hielo 5kg, Ruta 4..." required />
+              </div>
+              <div class="input-group">
+                <label for="prod-price">Precio ($)</label>
+                <input type="number" id="prod-price" step="0.01" min="0" placeholder="0.00" required />
+              </div>
+              <div class="input-group">
+                <label for="prod-desc">Descripción corta</label>
+                <input type="text" id="prod-desc" placeholder="Ej. Precio público en ruta" />
+              </div>
+              <div class="input-group">
+                <label for="prod-channel">Canal (para gráficas)</label>
+                <select id="prod-channel">
+                  <option value="ruta">Ruta</option>
+                  <option value="planta">Planta</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label for="prod-color">Color del botón</label>
+                <select id="prod-color">
+                  <option value="planta">Verde (Planta)</option>
+                  <option value="ruta1">Azul (Ruta 1)</option>
+                  <option value="ruta2">Amarillo (Ruta 2)</option>
+                  <option value="menudeo">Rosa (Menudeo)</option>
+                </select>
+              </div>
+              <button type="submit" class="btn-secondary">Agregar Artículo</button>
+            </form>
+          </section>
+
+          <section class="card">
+            <div class="card-header">
+              <h3>Artículos Activos en Punto de Venta</h3>
+              <span id="admin-products-count" class="muted">0 artículos</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Artículo / Tarifa</th>
+                    <th>Descripción</th>
+                    <th>Canal</th>
+                    <th>Precio</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-products-tbody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- SUB-VENTANA E: GESTIÓN DE REPARTIDORES Y ACCESOS -->
         <div id="admin-sub-users" class="admin-subtab-content">
           <div class="admin-grid-2">
-            <!-- SOLICITUDES PENDIENTES -->
             <section class="card">
               <div class="card-header">
                 <div>
@@ -471,7 +512,6 @@
               <div id="pending-users-list" class="users-list"></div>
             </section>
 
-            <!-- REPARTIDORES AUTORIZADOS -->
             <section class="card">
               <div class="card-header">
                 <div>
@@ -486,6 +526,51 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <!-- MODAL EDITAR ARTÍCULO -->
+  <div id="modal-edit-product" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="card-header">
+        <h3>Editar Artículo / Tarifa</h3>
+        <button type="button" class="btn-text-danger" onclick="window.closeEditModals()">✕ Cerrar</button>
+      </div>
+      <form id="form-edit-product" class="modal-form">
+        <input type="hidden" id="edit-prod-id" />
+        <div class="input-group">
+          <label for="edit-prod-name">Nombre del Artículo / Tarifa</label>
+          <input type="text" id="edit-prod-name" required />
+        </div>
+        <div class="input-group">
+          <label for="edit-prod-price">Precio ($)</label>
+          <input type="number" id="edit-prod-price" step="0.01" min="0" required />
+        </div>
+        <div class="input-group">
+          <label for="edit-prod-desc">Descripción corta</label>
+          <input type="text" id="edit-prod-desc" />
+        </div>
+        <div class="input-group">
+          <label for="edit-prod-channel">Canal (para gráficas)</label>
+          <select id="edit-prod-channel">
+            <option value="ruta">Ruta</option>
+            <option value="planta">Planta</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="edit-prod-color">Color del botón</label>
+          <select id="edit-prod-color">
+            <option value="planta">Verde (Planta)</option>
+            <option value="ruta1">Azul (Ruta 1)</option>
+            <option value="ruta2">Amarillo (Ruta 2)</option>
+            <option value="menudeo">Rosa (Menudeo)</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-outline-sm" onclick="window.closeEditModals()">Cancelar</button>
+          <button type="submit" class="btn-secondary">Guardar Cambios</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <!-- MODAL EDITAR GASTO -->

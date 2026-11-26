@@ -1033,3 +1033,23 @@ select:focus {
 .btn-approve:hover {
   background: #bbf7d0;
 }
+
+/* FORMULARIO DE ARTÍCULOS Y TARIFAS EN ADMIN */
+.product-admin-form {
+  display: grid;
+  grid-template-columns: 1.5fr 0.8fr 1.4fr 0.8fr 1fr auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+@media (max-width: 960px) {
+  .product-admin-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .product-admin-form {
+    grid-template-columns: 1fr;
+  }
+}

@@ -39,6 +39,14 @@ const ADMIN_EMAILS = [
   "pinguinotext10@gmail.com"
 ];
 
+// Artículos base que se crean automáticamente si la colección "products" está vacía
+const DEFAULT_PRODUCTS = [
+  { name: "Planta", price: 11, description: "Precio base directo", channel: "planta", color: "planta", order: 1 },
+  { name: "Mayoreo / Ruta 1", price: 17, description: "Tarifa preferencial ruta", channel: "ruta", color: "ruta1", order: 2 },
+  { name: "Ruta 2", price: 18, description: "Tarifa intermedia ruta", channel: "ruta", color: "ruta2", order: 3 },
+  { name: "Menudeo / Ruta 3", price: 20, description: "Precio público en ruta", channel: "ruta", color: "menudeo", order: 4 }
+];
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -50,14 +58,17 @@ const provider = new GoogleAuthProvider();
 let currentUser = null;
 const authorizedAdminEmails = ADMIN_EMAILS.map((email) => email.toLowerCase().trim());
 let cart = [];
+let allProducts = [];
 let allSales = [];
 let allExpenses = [];
 let allUsers = [];
 let currentPeriod = "today";
 let editingSaleItems = [];
+let seededDefaultProducts = false;
 
 // Desuscriptores de listeners en tiempo real
 let unsubUserStatus = null;
+let unsubProducts = null;
 let unsubSales = null;
 let unsubExpenses = null;
 let unsubAllUsers = null;
@@ -101,6 +112,7 @@ btnGoogleLogin.addEventListener("click", async () => {
 
 function cleanupListeners() {
   if (unsubUserStatus) { unsubUserStatus(); unsubUserStatus = null; }
+  if (unsubProducts) { unsubProducts(); unsubProducts = null; }
   if (unsubSales) { unsubSales(); unsubSales = null; }
   if (unsubExpenses) { unsubExpenses(); unsubExpenses = null; }
   if (unsubAllUsers) { unsubAllUsers(); unsubAllUsers = null; }
@@ -128,19 +140,16 @@ onAuthStateChanged(auth, (user) => {
   currentUser = user;
   const emailLower = user.email.toLowerCase().trim();
 
-  // Si es administrador fijo, entra directo sin esperar aprobación
   if (isUserAdmin()) {
     enterAuthorizedApp(user);
     return;
   }
 
-  // Si es un repartidor/operador, escuchar su documento en colección "users"
   const userDocRef = doc(db, "users", emailLower);
   unsubUserStatus = onSnapshot(
     userDocRef,
     async (docSnap) => {
       if (!docSnap.exists()) {
-        // Primera vez que intenta entrar: crear solicitud pendiente
         try {
           await setDoc(userDocRef, {
             email: emailLower,
@@ -161,8 +170,8 @@ onAuthStateChanged(auth, (user) => {
       if (userData.status === "approved") {
         enterAuthorizedApp(user);
       } else {
-        // Estado "pending" o revocado: bloquear pantalla de app
         if (unsubSales) { unsubSales(); unsubSales = null; }
+        if (unsubProducts) { unsubProducts(); unsubProducts = null; }
         showPendingScreen(emailLower);
       }
     },
@@ -192,6 +201,7 @@ function enterAuthorizedApp(user) {
   appScreen.classList.remove("hidden");
 
   updateAdminAccessUI();
+  if (!unsubProducts) listenToProducts();
   if (!unsubSales) listenToSales();
 
   if (isUserAdmin()) {
@@ -226,6 +236,7 @@ function updateAdminAccessUI() {
     deniedCard.classList.add("hidden");
     adminPanel.classList.remove("hidden");
     renderAdminDashboard();
+    renderAdminProducts();
     renderUsersManagement();
   } else {
     lockIcon.textContent = "🔒";
@@ -258,6 +269,8 @@ document.querySelectorAll(".admin-subtab-btn").forEach((btn) => {
 
     if (btn.dataset.subtab === "stats") {
       renderAdminDashboard();
+    } else if (btn.dataset.subtab === "products") {
+      renderAdminProducts();
     } else if (btn.dataset.subtab === "users") {
       renderUsersManagement();
     }
@@ -265,16 +278,195 @@ document.querySelectorAll(".admin-subtab-btn").forEach((btn) => {
 });
 
 // =========================================================================
-// 7. LÓGICA DEL PUNTO DE VENTA (TARIFAS Y LISTA DE VENTA)
+// 7. CATÁLOGO DINÁMICO DE ARTÍCULOS Y TARIFAS (CRUD ADMINISTRADOR)
 // =========================================================================
-document.querySelectorAll(".price-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const category = btn.dataset.category;
-    const price = parseFloat(btn.dataset.price);
-    addItemToCart(category, price, 1);
+function listenToProducts() {
+  const q = query(collection(db, "products"), orderBy("order", "asc"));
+  unsubProducts = onSnapshot(q, async (snapshot) => {
+    // Si aún no existen artículos en Firestore y es admin, sembrar los 4 base
+    if (snapshot.empty && isUserAdmin() && !seededDefaultProducts) {
+      seededDefaultProducts = true;
+      for (const item of DEFAULT_PRODUCTS) {
+        await addDoc(collection(db, "products"), {
+          ...item,
+          createdAt: serverTimestamp()
+        });
+      }
+      return;
+    }
+
+    allProducts = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderPosProducts();
+    renderAdminProducts();
+    renderAdminDashboard();
   });
+}
+
+function renderPosProducts() {
+  const grid = document.getElementById("pos-products-grid");
+  if (!grid) return;
+
+  if (allProducts.length === 0) {
+    grid.innerHTML = `<p class="muted">No hay artículos configurados. Pide al administrador agregar tarifas.</p>`;
+    return;
+  }
+
+  grid.innerHTML = allProducts
+    .map((p) => {
+      const colorClass = p.color || (p.channel === "planta" ? "planta" : "ruta1");
+      const priceNum = Number(p.price) || 0;
+      return `
+        <button type="button" class="price-btn ${colorClass}" onclick="window.posSelectProduct('${p.id}')">
+          <span class="tag">${p.name}</span>
+          <strong class="amount">$${priceNum.toFixed(2)}</strong>
+          <small>${p.description || (p.channel === "planta" ? "En Planta" : "En Ruta")}</small>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+window.posSelectProduct = (productId) => {
+  const prod = allProducts.find((p) => p.id === productId);
+  if (!prod) return;
+  addItemToCart(prod.name, Number(prod.price) || 0, 1);
+};
+
+function renderAdminProducts() {
+  if (!isUserAdmin()) return;
+
+  const countEl = document.getElementById("admin-products-count");
+  if (countEl) countEl.textContent = `${allProducts.length} artículos`;
+
+  const tbody = document.getElementById("admin-products-tbody");
+  if (!tbody) return;
+
+  if (allProducts.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center muted">No hay artículos registrados.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = allProducts
+    .map((p) => {
+      const badge =
+        p.channel === "planta"
+          ? `<span class="badge-planta">Planta</span>`
+          : `<span class="badge-ruta">Ruta</span>`;
+      return `
+        <tr>
+          <td><b>${p.name}</b></td>
+          <td>${p.description || "-"}</td>
+          <td>${badge}</td>
+          <td><b>$${Number(p.price).toFixed(2)}</b></td>
+          <td>
+            <div class="action-btns">
+              <button type="button" class="btn-edit" onclick="window.adminOpenEditProduct('${p.id}')">Editar</button>
+              <button type="button" class="btn-del" onclick="window.adminDeleteProduct('${p.id}')">Quitar</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+document.getElementById("product-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!isUserAdmin()) return;
+
+  const name = document.getElementById("prod-name").value.trim();
+  const price = parseFloat(document.getElementById("prod-price").value);
+  const description = document.getElementById("prod-desc").value.trim();
+  const channel = document.getElementById("prod-channel").value;
+  const color = document.getElementById("prod-color").value;
+
+  if (!name || isNaN(price) || price < 0) return;
+
+  const nextOrder =
+    allProducts.length > 0
+      ? Math.max(...allProducts.map((p) => Number(p.order) || 0)) + 1
+      : 1;
+
+  try {
+    await addDoc(collection(db, "products"), {
+      name,
+      price,
+      description,
+      channel,
+      color,
+      order: nextOrder,
+      createdBy: currentUser.email.toLowerCase(),
+      createdAt: serverTimestamp()
+    });
+
+    document.getElementById("prod-name").value = "";
+    document.getElementById("prod-price").value = "";
+    document.getElementById("prod-desc").value = "";
+    showToast("✅ Artículo agregado al Punto de Venta");
+  } catch (err) {
+    alert("Error al agregar artículo: " + err.message);
+  }
 });
 
+window.adminOpenEditProduct = (productId) => {
+  if (!isUserAdmin()) return;
+  const prod = allProducts.find((p) => p.id === productId);
+  if (!prod) return;
+
+  document.getElementById("edit-prod-id").value = prod.id;
+  document.getElementById("edit-prod-name").value = prod.name || "";
+  document.getElementById("edit-prod-price").value = prod.price ?? 0;
+  document.getElementById("edit-prod-desc").value = prod.description || "";
+  document.getElementById("edit-prod-channel").value = prod.channel || "ruta";
+  document.getElementById("edit-prod-color").value = prod.color || "ruta1";
+
+  document.getElementById("modal-edit-product").classList.remove("hidden");
+};
+
+document.getElementById("form-edit-product").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!isUserAdmin()) return;
+
+  const id = document.getElementById("edit-prod-id").value;
+  const name = document.getElementById("edit-prod-name").value.trim();
+  const price = parseFloat(document.getElementById("edit-prod-price").value);
+  const description = document.getElementById("edit-prod-desc").value.trim();
+  const channel = document.getElementById("edit-prod-channel").value;
+  const color = document.getElementById("edit-prod-color").value;
+
+  if (!id || !name || isNaN(price) || price < 0) return;
+
+  try {
+    await updateDoc(doc(db, "products", id), {
+      name,
+      price,
+      description,
+      channel,
+      color
+    });
+    window.closeEditModals();
+    showToast("✅ Artículo actualizado");
+  } catch (err) {
+    alert("Error al actualizar artículo: " + err.message);
+  }
+});
+
+window.adminDeleteProduct = async (productId) => {
+  if (!isUserAdmin()) return;
+  const prod = allProducts.find((p) => p.id === productId);
+  if (!confirm(`¿Quitar "${prod?.name || "este artículo"}" del Punto de Venta?`)) return;
+
+  try {
+    await deleteDoc(doc(db, "products", productId));
+    showToast("🗑️ Artículo eliminado");
+  } catch (err) {
+    alert("Error al eliminar artículo: " + err.message);
+  }
+};
+
+// =========================================================================
+// 8. LÓGICA DEL PUNTO DE VENTA (CARRITO Y PRECIO ESPECIAL)
+// =========================================================================
 document.getElementById("special-price-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const labelInput = document.getElementById("special-label").value.trim();
@@ -327,7 +519,7 @@ function renderCart() {
     cartContainer.innerHTML = `
       <div class="empty-state">
         <p>Aún no has agregado productos a esta venta.</p>
-        <small>Haz clic en una tarifa de la izquierda para comenzar.</small>
+        <small>Haz clic en un artículo de la izquierda para comenzar.</small>
       </div>`;
     cartTotalUnitsEl.textContent = "0";
     cartTotalAmountEl.textContent = "$0.00";
@@ -402,7 +594,7 @@ btnSubmitSale.addEventListener("click", async () => {
 });
 
 // =========================================================================
-// 8. ESCUCHA EN TIEMPO REAL DE VENTAS, GASTOS Y USUARIOS
+// 9. ESCUCHA EN TIEMPO REAL DE VENTAS, GASTOS Y USUARIOS
 // =========================================================================
 function listenToSales() {
   const q = query(collection(db, "sales"), orderBy("clientTimestamp", "desc"));
@@ -430,7 +622,7 @@ function listenToUsers() {
 }
 
 // =========================================================================
-// 9. GESTIÓN DE REPARTIDORES (APROBAR SOLICITUDES / QUITAR ACCESO)
+// 10. GESTIÓN DE REPARTIDORES (APROBAR SOLICITUDES / QUITAR ACCESO)
 // =========================================================================
 function renderUsersManagement() {
   if (!isUserAdmin()) return;
@@ -441,7 +633,6 @@ function renderUsersManagement() {
   const pendingUsers = nonAdminUsers.filter((u) => u.status === "pending");
   const approvedUsers = nonAdminUsers.filter((u) => u.status === "approved");
 
-  // Actualizar contador de notificaciones en la pestaña
   const navBadge = document.getElementById("pending-users-badge");
   if (navBadge) {
     navBadge.textContent = pendingUsers.length;
@@ -453,7 +644,6 @@ function renderUsersManagement() {
   if (pendingCountEl) pendingCountEl.textContent = `${pendingUsers.length} pendientes`;
   if (approvedCountEl) approvedCountEl.textContent = `${approvedUsers.length} activos`;
 
-  // Render lista de solicitudes pendientes
   const pendingListEl = document.getElementById("pending-users-list");
   if (pendingListEl) {
     pendingListEl.innerHTML =
@@ -478,7 +668,6 @@ function renderUsersManagement() {
         .join("") || `<p class="muted">No hay solicitudes pendientes por aprobar.</p>`;
   }
 
-  // Render lista de repartidores aprobados
   const approvedListEl = document.getElementById("approved-users-list");
   if (approvedListEl) {
     approvedListEl.innerHTML =
@@ -531,7 +720,7 @@ window.adminRemoveUser = async (email, isRejection = false) => {
 };
 
 // =========================================================================
-// 10. REGISTRO DE GASTOS Y VENTAS DEL OPERADOR HOY
+// 11. REGISTRO DE GASTOS Y VENTAS DEL OPERADOR HOY
 // =========================================================================
 document.getElementById("expense-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -611,7 +800,7 @@ function renderMyTodaySales() {
 }
 
 // =========================================================================
-// 11. PANEL DE ADMINISTRADOR (FILTROS, BALANCE, ESTADÍSTICAS Y CSV)
+// 12. PANEL DE ADMINISTRADOR (FILTROS, BALANCE, ESTADÍSTICAS Y CSV)
 // =========================================================================
 document.querySelectorAll(".filter-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -771,8 +960,22 @@ function renderAdminDashboard() {
 }
 
 // =========================================================================
-// 12. CÁLCULO DE INDICADORES Y GRÁFICAS (CHART.JS)
+// 13. CÁLCULO DE INDICADORES Y GRÁFICAS (CHART.JS)
 // =========================================================================
+function detectItemChannel(itemCategory, saleNote = "") {
+  const matchedProd = allProducts.find(
+    (p) => p.name.toLowerCase() === (itemCategory || "").toLowerCase()
+  );
+  if (matchedProd) return matchedProd.channel;
+
+  const catLower = (itemCategory || "").toLowerCase();
+  if (catLower === "planta") return "planta";
+  if (catLower.includes("ruta") || catLower.includes("mayoreo") || catLower.includes("menudeo")) {
+    return "ruta";
+  }
+  return (saleNote || "").toLowerCase().includes("ruta") ? "ruta" : "planta";
+}
+
 function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses, totalUnits) {
   const avgUnitPrice = totalUnits > 0 ? totalRevenue / totalUnits : 0;
   const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue) * 100 : 0;
@@ -791,25 +994,13 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
 
     (s.items || []).forEach((item) => {
       const sub = (Number(item.qty) || 0) * (Number(item.unitPrice) || 0);
-      if (item.category === "Planta") {
+      const channel = detectItemChannel(item.category, s.note);
+      if (channel === "planta") {
         salePlantaMoney += sub;
         hasPlanta = true;
-      } else if (
-        item.category.includes("Ruta") ||
-        item.category.includes("Mayoreo") ||
-        item.category.includes("Menudeo")
-      ) {
+      } else {
         saleRutaMoney += sub;
         hasRuta = true;
-      } else {
-        const noteLower = (s.note || "").toLowerCase();
-        if (noteLower.includes("ruta")) {
-          saleRutaMoney += sub;
-          hasRuta = true;
-        } else {
-          salePlantaMoney += sub;
-          hasPlanta = true;
-        }
       }
     });
 
@@ -894,7 +1085,7 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
     }
   });
 
-  // Gráfica 2: Ticket Promedio (Ventas en Planta vs Ventas en Ruta)
+  // Gráfica 2: Ticket Promedio (Planta vs Ruta)
   const avgTicketCanvas = document.getElementById("chart-avg-ticket");
   if (avgTicketCanvas) {
     if (avgTicketChartInstance) avgTicketChartInstance.destroy();
@@ -929,35 +1120,24 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
         scales: {
           y: {
             beginAtZero: true,
-            ticks: {
-              callback: (val) => `$${val}`
-            }
+            ticks: { callback: (val) => `$${val}` }
           }
         }
       }
     });
   }
 
-  // Gráfica 3: Mezcla de Ventas (Planta vs Rutas vs Especial)
-  let plantaMoney = 0;
-  let ruta1Money = 0;
-  let ruta2Money = 0;
-  let ruta3Money = 0;
-  let especialMoney = 0;
-
+  // Gráfica 3: Mezcla de Ventas por Artículo
+  const mixMap = {};
   sales.forEach((s) => {
     (s.items || []).forEach((item) => {
-      const sub = item.qty * item.unitPrice;
-      if (item.category === "Planta") plantaMoney += sub;
-      else if (item.category.includes("Ruta 1")) ruta1Money += sub;
-      else if (item.category.includes("Ruta 2")) ruta2Money += sub;
-      else if (item.category.includes("Ruta 3")) ruta3Money += sub;
-      else especialMoney += sub;
+      const sub = (Number(item.qty) || 0) * (Number(item.unitPrice) || 0);
+      mixMap[item.category] = (mixMap[item.category] || 0) + sub;
     });
   });
 
-  const mixLabels = ["Planta ($11)", "Ruta 1 ($17)", "Ruta 2 ($18)", "Ruta 3 ($20)", "Especial"];
-  const mixValues = [plantaMoney, ruta1Money, ruta2Money, ruta3Money, especialMoney];
+  const mixLabels = Object.keys(mixMap);
+  const mixValues = mixLabels.map((k) => mixMap[k]);
   const hasMixData = mixValues.some((v) => v > 0);
 
   if (plantRoutesChartInstance) plantRoutesChartInstance.destroy();
@@ -969,7 +1149,7 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
         {
           data: hasMixData ? mixValues : [1],
           backgroundColor: hasMixData
-            ? ["#10b981", "#2563eb", "#eab308", "#ec4899", "#8b5cf6"]
+            ? ["#10b981", "#2563eb", "#eab308", "#ec4899", "#8b5cf6", "#06b6d4", "#f97316"]
             : ["#e2e8f0"]
         }
       ]
@@ -981,7 +1161,7 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
     }
   });
 
-  // Gráfica 4: Distribución de Gastos (Gastos de Ruta vs Planta / Generales)
+  // Gráfica 4: Distribución de Gastos
   const expByCat = {};
   expenses.forEach((ex) => {
     expByCat[ex.category] = (expByCat[ex.category] || 0) + (ex.amount || 0);
@@ -1013,7 +1193,7 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
 }
 
 // =========================================================================
-// 13. ELIMINACIÓN Y EDICIÓN DE VENTAS Y GASTOS (SOLO ADMINISTRADORES)
+// 14. ELIMINACIÓN Y EDICIÓN DE VENTAS Y GASTOS (SOLO ADMINISTRADORES)
 // =========================================================================
 window.adminDeleteSale = async (saleId) => {
   if (!isUserAdmin()) return;
@@ -1030,11 +1210,11 @@ window.adminDeleteExpense = async (expenseId) => {
 };
 
 window.closeEditModals = () => {
+  document.getElementById("modal-edit-product").classList.add("hidden");
   document.getElementById("modal-edit-expense").classList.add("hidden");
   document.getElementById("modal-edit-sale").classList.add("hidden");
 };
 
-// --- EDITAR GASTO ---
 window.adminOpenEditExpense = (expenseId) => {
   if (!isUserAdmin()) return;
   const expense = allExpenses.find((e) => e.id === expenseId);
@@ -1072,7 +1252,6 @@ document.getElementById("form-edit-expense").addEventListener("submit", async (e
   }
 });
 
-// --- EDITAR VENTA ---
 window.adminOpenEditSale = (saleId) => {
   if (!isUserAdmin()) return;
   const sale = allSales.find((s) => s.id === saleId);
@@ -1137,7 +1316,8 @@ window.removeEditSaleItem = (idx) => {
 };
 
 document.getElementById("btn-add-edit-item").addEventListener("click", () => {
-  editingSaleItems.push({ category: "Planta", unitPrice: 11, qty: 1 });
+  const defaultProd = allProducts[0] || { name: "Planta", price: 11 };
+  editingSaleItems.push({ category: defaultProd.name, unitPrice: Number(defaultProd.price), qty: 1 });
   renderEditSaleItems();
 });
 
@@ -1178,7 +1358,7 @@ document.getElementById("form-edit-sale").addEventListener("submit", async (e) =
 });
 
 // =========================================================================
-// 14. EXPORTAR REPORTE A CSV Y NOTIFICACIONES
+// 15. EXPORTAR REPORTE A CSV Y NOTIFICACIONES
 // =========================================================================
 document.getElementById("btn-export-csv").addEventListener("click", () => {
   const filteredSales = filterByPeriod(allSales);
