@@ -10,6 +10,7 @@ import {
   getFirestore,
   collection,
   addDoc,
+  updateDoc,
   deleteDoc,
   doc,
   onSnapshot,
@@ -31,8 +32,11 @@ const firebaseConfig = {
   measurementId: "G-NX9WBHR7Q6"
 };
 
-// Correo fijo autorizado como Administrador
-const DEFAULT_ADMIN_EMAIL = "jesus181401@gmail.com";
+// Lista de correos fijos autorizados como Administradores
+const ADMIN_EMAILS = [
+  "jesus181401@gmail.com",
+  "pinguinotext10@gmail.com"
+];
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -43,11 +47,12 @@ const provider = new GoogleAuthProvider();
 // 2. ESTADO GLOBAL DE LA APLICACIÓN
 // =========================================================================
 let currentUser = null;
-const authorizedAdminEmail = DEFAULT_ADMIN_EMAIL.toLowerCase().trim();
+const authorizedAdminEmails = ADMIN_EMAILS.map((email) => email.toLowerCase().trim());
 let cart = [];
 let allSales = [];
 let allExpenses = [];
 let currentPeriod = "today";
+let editingSaleItems = [];
 
 // Instancias de gráficas Chart.js
 let trendChartInstance = null;
@@ -108,10 +113,13 @@ onAuthStateChanged(auth, (user) => {
 });
 
 // =========================================================================
-// 5. VALIDACIÓN DEL ADMINISTRADOR POR CORREO FIJO
+// 5. VALIDACIÓN DE ADMINISTRADORES POR CORREOS FIJOS
 // =========================================================================
 function isUserAdmin() {
-  return currentUser && currentUser.email.toLowerCase() === authorizedAdminEmail;
+  return (
+    currentUser &&
+    authorizedAdminEmails.includes(currentUser.email.toLowerCase().trim())
+  );
 }
 
 function updateAdminAccessUI() {
@@ -123,7 +131,7 @@ function updateAdminAccessUI() {
   const deniedAdminEl = document.getElementById("denied-admin-email");
 
   if (deniedCurrentEl) deniedCurrentEl.textContent = currentUser?.email || "";
-  if (deniedAdminEl) deniedAdminEl.textContent = authorizedAdminEmail;
+  if (deniedAdminEl) deniedAdminEl.textContent = authorizedAdminEmails.join(" / ");
 
   if (isUserAdmin()) {
     lockIcon.textContent = "🔓";
@@ -160,7 +168,6 @@ document.querySelectorAll(".admin-subtab-btn").forEach((btn) => {
     btn.classList.add("active");
     document.getElementById(`admin-sub-${btn.dataset.subtab}`).classList.add("active");
 
-    // Re-renderizar gráficas cuando se abre la pestaña de estadísticas para ajustar su tamaño
     if (btn.dataset.subtab === "stats") {
       renderAdminDashboard();
     }
@@ -528,7 +535,10 @@ function renderAdminDashboard() {
             <td>${ex.concept}</td>
             <td class="text-danger"><b>-$${Number(ex.amount).toFixed(2)}</b></td>
             <td>
-              <button class="btn-del" onclick="window.adminDeleteExpense('${ex.id}')">Borrar</button>
+              <div class="action-btns">
+                <button class="btn-edit" onclick="window.adminOpenEditExpense('${ex.id}')">Editar</button>
+                <button class="btn-del" onclick="window.adminDeleteExpense('${ex.id}')">Borrar</button>
+              </div>
             </td>
           </tr>`;
       })
@@ -554,7 +564,10 @@ function renderAdminDashboard() {
           <td>${s.totalUnits}</td>
           <td><b>$${Number(s.totalAmount).toFixed(2)}</b></td>
           <td>
-            <button class="btn-del" onclick="window.adminDeleteSale('${s.id}')">Borrar</button>
+            <div class="action-btns">
+              <button class="btn-edit" onclick="window.adminOpenEditSale('${s.id}')">Editar</button>
+              <button class="btn-del" onclick="window.adminDeleteSale('${s.id}')">Borrar</button>
+            </div>
           </td>
         </tr>`;
     })
@@ -565,7 +578,6 @@ function renderAdminDashboard() {
 // 10. CÁLCULO DE INDICADORES Y GRÁFICAS (CHART.JS)
 // =========================================================================
 function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses, totalUnits) {
-  // 1. Indicadores solicitados
   const avgUnitPrice = totalUnits > 0 ? totalRevenue / totalUnits : 0;
   const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue) * 100 : 0;
   const avgTicket = sales.length > 0 ? totalRevenue / sales.length : 0;
@@ -580,7 +592,7 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
 
   if (typeof Chart === "undefined") return;
 
-  // 2. Gráfica 1: Tendencia Ingresos vs Gastos
+  // Gráfica 1: Tendencia Ingresos vs Gastos
   const dailyMap = {};
   const formatBucket = (ts) => {
     const d = new Date(ts);
@@ -634,7 +646,7 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
     }
   });
 
-  // 3. Gráfica 2: Mezcla de Ventas (Planta vs Rutas vs Especial)
+  // Gráfica 2: Mezcla de Ventas (Planta vs Rutas vs Especial)
   let plantaMoney = 0;
   let ruta1Money = 0;
   let ruta2Money = 0;
@@ -677,7 +689,7 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
     }
   });
 
-  // 4. Gráfica 3: Distribución de Gastos (Gastos de Ruta vs Planta / Generales)
+  // Gráfica 3: Distribución de Gastos (Gastos de Ruta vs Planta / Generales)
   const expByCat = {};
   expenses.forEach((ex) => {
     expByCat[ex.category] = (expByCat[ex.category] || 0) + (ex.amount || 0);
@@ -708,6 +720,9 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
   });
 }
 
+// =========================================================================
+// 11. ELIMINACIÓN Y EDICIÓN DE VENTAS Y GASTOS (SOLO ADMINISTRADORES)
+// =========================================================================
 window.adminDeleteSale = async (saleId) => {
   if (!isUserAdmin()) return;
   if (!confirm("¿Seguro que deseas eliminar este registro de venta?")) return;
@@ -722,7 +737,157 @@ window.adminDeleteExpense = async (expenseId) => {
   showToast("Gasto eliminado");
 };
 
-// Exportar reporte de ventas y gastos a CSV
+window.closeEditModals = () => {
+  document.getElementById("modal-edit-expense").classList.add("hidden");
+  document.getElementById("modal-edit-sale").classList.add("hidden");
+};
+
+// --- EDITAR GASTO ---
+window.adminOpenEditExpense = (expenseId) => {
+  if (!isUserAdmin()) return;
+  const expense = allExpenses.find((e) => e.id === expenseId);
+  if (!expense) return;
+
+  document.getElementById("edit-expense-id").value = expense.id;
+  document.getElementById("edit-expense-concept").value = expense.concept || "";
+  document.getElementById("edit-expense-category").value = expense.category || "Gasolina / Ruta";
+  document.getElementById("edit-expense-amount").value = expense.amount || 0;
+
+  document.getElementById("modal-edit-expense").classList.remove("hidden");
+};
+
+document.getElementById("form-edit-expense").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!isUserAdmin()) return;
+
+  const id = document.getElementById("edit-expense-id").value;
+  const concept = document.getElementById("edit-expense-concept").value.trim();
+  const category = document.getElementById("edit-expense-category").value;
+  const amount = parseFloat(document.getElementById("edit-expense-amount").value);
+
+  if (!id || !concept || isNaN(amount) || amount <= 0) return;
+
+  try {
+    await updateDoc(doc(db, "expenses", id), {
+      concept,
+      category,
+      amount
+    });
+    window.closeEditModals();
+    showToast("✅ Gasto actualizado correctamente");
+  } catch (err) {
+    alert("Error al actualizar gasto: " + err.message);
+  }
+});
+
+// --- EDITAR VENTA ---
+window.adminOpenEditSale = (saleId) => {
+  if (!isUserAdmin()) return;
+  const sale = allSales.find((s) => s.id === saleId);
+  if (!sale) return;
+
+  document.getElementById("edit-sale-id").value = sale.id;
+  document.getElementById("edit-sale-note").value = sale.note || "";
+  editingSaleItems = (sale.items || []).map((i) => ({ ...i }));
+
+  renderEditSaleItems();
+  document.getElementById("modal-edit-sale").classList.remove("hidden");
+};
+
+function renderEditSaleItems() {
+  const container = document.getElementById("edit-sale-items-list");
+  let totalUnits = 0;
+  let totalAmount = 0;
+
+  container.innerHTML = editingSaleItems
+    .map((item, idx) => {
+      const qty = Number(item.qty) || 0;
+      const price = Number(item.unitPrice) || 0;
+      totalUnits += qty;
+      totalAmount += qty * price;
+
+      return `
+        <div class="edit-item-row">
+          <input type="text" value="${item.category}" onchange="window.updateEditSaleField(${idx}, 'category', this.value)" placeholder="Tarifa / Concepto" required />
+          <input type="number" min="1" value="${qty}" oninput="window.updateEditSaleField(${idx}, 'qty', this.value)" title="Cantidad" required />
+          <input type="number" step="0.01" min="0.5" value="${price}" oninput="window.updateEditSaleField(${idx}, 'unitPrice', this.value)" title="Precio unitario" required />
+          <button type="button" class="btn-del" onclick="window.removeEditSaleItem(${idx})">✕</button>
+        </div>
+      `;
+    })
+    .join("");
+
+  document.getElementById("edit-sale-total-units").textContent = totalUnits;
+  document.getElementById("edit-sale-total-amount").textContent = `$${totalAmount.toFixed(2)}`;
+}
+
+window.updateEditSaleField = (idx, field, value) => {
+  if (field === "category") {
+    editingSaleItems[idx].category = value;
+  } else {
+    editingSaleItems[idx][field] = parseFloat(value) || 0;
+  }
+  const totalUnits = editingSaleItems.reduce((acc, i) => acc + (Number(i.qty) || 0), 0);
+  const totalAmount = editingSaleItems.reduce(
+    (acc, i) => acc + (Number(i.qty) || 0) * (Number(i.unitPrice) || 0),
+    0
+  );
+  document.getElementById("edit-sale-total-units").textContent = totalUnits;
+  document.getElementById("edit-sale-total-amount").textContent = `$${totalAmount.toFixed(2)}`;
+};
+
+window.removeEditSaleItem = (idx) => {
+  if (editingSaleItems.length <= 1) {
+    return alert("La venta debe conservar al menos un producto. Si deseas anularla, usa el botón Borrar.");
+  }
+  editingSaleItems.splice(idx, 1);
+  renderEditSaleItems();
+};
+
+document.getElementById("btn-add-edit-item").addEventListener("click", () => {
+  editingSaleItems.push({ category: "Planta", unitPrice: 11, qty: 1 });
+  renderEditSaleItems();
+});
+
+document.getElementById("form-edit-sale").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!isUserAdmin()) return;
+
+  const id = document.getElementById("edit-sale-id").value;
+  const note = document.getElementById("edit-sale-note").value.trim();
+
+  const cleanItems = editingSaleItems
+    .map((i) => ({
+      category: i.category.trim() || "Tarifa",
+      qty: parseInt(i.qty, 10) || 0,
+      unitPrice: parseFloat(i.unitPrice) || 0
+    }))
+    .filter((i) => i.qty > 0 && i.unitPrice > 0);
+
+  if (!id || cleanItems.length === 0) {
+    return alert("Verifica que las cantidades y precios sean mayores a 0.");
+  }
+
+  const totalUnits = cleanItems.reduce((acc, i) => acc + i.qty, 0);
+  const totalAmount = cleanItems.reduce((acc, i) => acc + i.qty * i.unitPrice, 0);
+
+  try {
+    await updateDoc(doc(db, "sales", id), {
+      items: cleanItems,
+      totalUnits,
+      totalAmount,
+      note
+    });
+    window.closeEditModals();
+    showToast("✅ Venta actualizada correctamente");
+  } catch (err) {
+    alert("Error al actualizar la venta: " + err.message);
+  }
+});
+
+// =========================================================================
+// 12. EXPORTAR REPORTE A CSV Y NOTIFICACIONES
+// =========================================================================
 document.getElementById("btn-export-csv").addEventListener("click", () => {
   const filteredSales = filterByPeriod(allSales);
   const filteredExpenses = filterByPeriod(allExpenses);

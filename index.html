@@ -417,6 +417,83 @@
     </main>
   </div>
 
+  <!-- MODAL EDITAR GASTO -->
+  <div id="modal-edit-expense" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="card-header">
+        <h3>Editar Gasto</h3>
+        <button type="button" class="btn-text-danger" onclick="window.closeEditModals()">✕ Cerrar</button>
+      </div>
+      <form id="form-edit-expense" class="modal-form">
+        <input type="hidden" id="edit-expense-id" />
+        <div class="input-group">
+          <label for="edit-expense-concept">Concepto del Gasto</label>
+          <input type="text" id="edit-expense-concept" required />
+        </div>
+        <div class="input-group">
+          <label for="edit-expense-category">Tipo / Destino del Gasto</label>
+          <select id="edit-expense-category">
+            <option value="Gasolina / Ruta">Gasolina / Ruta</option>
+            <option value="Viáticos / Comisiones Ruta">Viáticos / Comisiones Ruta</option>
+            <option value="Mantenimiento Vehículos / Ruta">Mantenimiento Vehículos / Ruta</option>
+            <option value="Insumos / Planta">Insumos / Planta</option>
+            <option value="Servicios / Planta">Servicios / Planta</option>
+            <option value="Nómina / Otros">Nómina / Otros</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="edit-expense-amount">Monto ($)</label>
+          <input type="number" id="edit-expense-amount" step="0.01" min="0.5" required />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-outline-sm" onclick="window.closeEditModals()">Cancelar</button>
+          <button type="submit" class="btn-secondary">Guardar Cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL EDITAR VENTA -->
+  <div id="modal-edit-sale" class="modal-backdrop hidden">
+    <div class="modal-card modal-card-lg">
+      <div class="card-header">
+        <h3>Editar Venta</h3>
+        <button type="button" class="btn-text-danger" onclick="window.closeEditModals()">✕ Cerrar</button>
+      </div>
+      <form id="form-edit-sale" class="modal-form">
+        <input type="hidden" id="edit-sale-id" />
+        
+        <div class="input-group">
+          <label>Productos de la Venta (Cantidades y Precios)</label>
+          <div id="edit-sale-items-list" class="edit-items-container"></div>
+          <button type="button" id="btn-add-edit-item" class="btn-outline-sm" style="margin-top: 0.4rem;">
+            + Agregar línea de tarifa
+          </button>
+        </div>
+
+        <div class="input-group">
+          <label for="edit-sale-note">Nota / Ruta / Cliente</label>
+          <input type="text" id="edit-sale-note" placeholder="Sin nota" />
+        </div>
+
+        <div class="totals-row">
+          <span>Unidades: <strong id="edit-sale-total-units">0</strong></span>
+          <div class="total-money">
+            <span>Nuevo Total:</span>
+            <strong id="edit-sale-total-amount">$0.00</strong>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-outline-sm" onclick="window.closeEditModals()">Cancelar</button>
+          <button type="submit" class="btn-primary-lg" style="width: auto; padding: 0.6rem 1.25rem; font-size: 0.95rem;">
+            Actualizar Venta
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- NOTIFICACIÓN TOAST -->
   <div id="toast" class="toast hidden"></div>
 
