@@ -973,3 +973,63 @@ select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* GESTIÓN DE USUARIOS Y SOLICITUDES DE ACCESO */
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.user-access-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.user-access-info {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.user-access-info img {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.user-access-info div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.user-access-info strong,
+.user-access-info small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-approve {
+  background: #dcfce7;
+  color: #15803d;
+  border: none;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.btn-approve:hover {
+  background: #bbf7d0;
+}

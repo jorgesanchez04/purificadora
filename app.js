@@ -10,6 +10,7 @@ import {
   getFirestore,
   collection,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   doc,
@@ -51,8 +52,15 @@ const authorizedAdminEmails = ADMIN_EMAILS.map((email) => email.toLowerCase().tr
 let cart = [];
 let allSales = [];
 let allExpenses = [];
+let allUsers = [];
 let currentPeriod = "today";
 let editingSaleItems = [];
+
+// Desuscriptores de listeners en tiempo real
+let unsubUserStatus = null;
+let unsubSales = null;
+let unsubExpenses = null;
+let unsubAllUsers = null;
 
 // Instancias de gráficas Chart.js
 let trendChartInstance = null;
@@ -64,9 +72,11 @@ let expensesRoutesChartInstance = null;
 // 3. ELEMENTOS DEL DOM
 // =========================================================================
 const loginScreen = document.getElementById("login-screen");
+const pendingScreen = document.getElementById("pending-screen");
 const appScreen = document.getElementById("app-screen");
 const btnGoogleLogin = document.getElementById("btn-google-login");
 const btnLogout = document.getElementById("btn-logout");
+const btnPendingLogout = document.getElementById("btn-pending-logout");
 const loginError = document.getElementById("login-error");
 
 const cartContainer = document.getElementById("cart-items-container");
@@ -77,7 +87,7 @@ const btnClearCart = document.getElementById("btn-clear-cart");
 const saleNoteInput = document.getElementById("sale-note");
 
 // =========================================================================
-// 4. AUTENTICACIÓN CON GOOGLE
+// 4. AUTENTICACIÓN Y CONTROL DE APROBACIÓN DE USUARIOS
 // =========================================================================
 btnGoogleLogin.addEventListener("click", async () => {
   loginError.classList.add("hidden");
@@ -89,29 +99,106 @@ btnGoogleLogin.addEventListener("click", async () => {
   }
 });
 
-btnLogout.addEventListener("click", () => signOut(auth));
+function cleanupListeners() {
+  if (unsubUserStatus) { unsubUserStatus(); unsubUserStatus = null; }
+  if (unsubSales) { unsubSales(); unsubSales = null; }
+  if (unsubExpenses) { unsubExpenses(); unsubExpenses = null; }
+  if (unsubAllUsers) { unsubAllUsers(); unsubAllUsers = null; }
+}
+
+const handleSignOut = () => {
+  cleanupListeners();
+  signOut(auth);
+};
+
+btnLogout.addEventListener("click", handleSignOut);
+if (btnPendingLogout) btnPendingLogout.addEventListener("click", handleSignOut);
 
 onAuthStateChanged(auth, (user) => {
-  if (user) {
-    currentUser = user;
-    document.getElementById("user-name").textContent = user.displayName || "Operador";
-    document.getElementById("user-email").textContent = user.email;
-    document.getElementById("user-photo").src = user.photoURL || "https://via.placeholder.com/40";
+  cleanupListeners();
 
-    loginScreen.classList.add("hidden");
-    appScreen.classList.remove("hidden");
-
-    updateAdminAccessUI();
-    listenToSales();
-    if (isUserAdmin()) {
-      listenToExpenses();
-    }
-  } else {
+  if (!user) {
     currentUser = null;
     appScreen.classList.add("hidden");
+    if (pendingScreen) pendingScreen.classList.add("hidden");
     loginScreen.classList.remove("hidden");
+    return;
   }
+
+  currentUser = user;
+  const emailLower = user.email.toLowerCase().trim();
+
+  // Si es administrador fijo, entra directo sin esperar aprobación
+  if (isUserAdmin()) {
+    enterAuthorizedApp(user);
+    return;
+  }
+
+  // Si es un repartidor/operador, escuchar su documento en colección "users"
+  const userDocRef = doc(db, "users", emailLower);
+  unsubUserStatus = onSnapshot(
+    userDocRef,
+    async (docSnap) => {
+      if (!docSnap.exists()) {
+        // Primera vez que intenta entrar: crear solicitud pendiente
+        try {
+          await setDoc(userDocRef, {
+            email: emailLower,
+            displayName: user.displayName || "Operador",
+            photoURL: user.photoURL || "",
+            status: "pending",
+            requestedAt: serverTimestamp(),
+            clientTimestamp: Date.now()
+          });
+        } catch (err) {
+          console.error("Error al registrar solicitud:", err);
+        }
+        showPendingScreen(emailLower);
+        return;
+      }
+
+      const userData = docSnap.data();
+      if (userData.status === "approved") {
+        enterAuthorizedApp(user);
+      } else {
+        // Estado "pending" o revocado: bloquear pantalla de app
+        if (unsubSales) { unsubSales(); unsubSales = null; }
+        showPendingScreen(emailLower);
+      }
+    },
+    (err) => {
+      console.error("Error verificando permiso de usuario:", err);
+      showPendingScreen(emailLower);
+    }
+  );
 });
+
+function showPendingScreen(email) {
+  loginScreen.classList.add("hidden");
+  appScreen.classList.add("hidden");
+  if (pendingScreen) {
+    document.getElementById("pending-user-email").textContent = email;
+    pendingScreen.classList.remove("hidden");
+  }
+}
+
+function enterAuthorizedApp(user) {
+  document.getElementById("user-name").textContent = user.displayName || "Operador";
+  document.getElementById("user-email").textContent = user.email;
+  document.getElementById("user-photo").src = user.photoURL || "https://via.placeholder.com/40";
+
+  loginScreen.classList.add("hidden");
+  if (pendingScreen) pendingScreen.classList.add("hidden");
+  appScreen.classList.remove("hidden");
+
+  updateAdminAccessUI();
+  if (!unsubSales) listenToSales();
+
+  if (isUserAdmin()) {
+    if (!unsubExpenses) listenToExpenses();
+    if (!unsubAllUsers) listenToUsers();
+  }
+}
 
 // =========================================================================
 // 5. VALIDACIÓN DE ADMINISTRADORES POR CORREOS FIJOS
@@ -139,6 +226,7 @@ function updateAdminAccessUI() {
     deniedCard.classList.add("hidden");
     adminPanel.classList.remove("hidden");
     renderAdminDashboard();
+    renderUsersManagement();
   } else {
     lockIcon.textContent = "🔒";
     deniedCard.classList.remove("hidden");
@@ -160,7 +248,6 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
   });
 });
 
-// Sub-ventanas internas dentro de Administrador (Ventas / Gastos / Estadísticas)
 document.querySelectorAll(".admin-subtab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".admin-subtab-btn").forEach((b) => b.classList.remove("active"));
@@ -171,6 +258,8 @@ document.querySelectorAll(".admin-subtab-btn").forEach((btn) => {
 
     if (btn.dataset.subtab === "stats") {
       renderAdminDashboard();
+    } else if (btn.dataset.subtab === "users") {
+      renderUsersManagement();
     }
   });
 });
@@ -313,11 +402,11 @@ btnSubmitSale.addEventListener("click", async () => {
 });
 
 // =========================================================================
-// 8. ESCUCHA EN TIEMPO REAL DE VENTAS Y GASTOS
+// 8. ESCUCHA EN TIEMPO REAL DE VENTAS, GASTOS Y USUARIOS
 // =========================================================================
 function listenToSales() {
   const q = query(collection(db, "sales"), orderBy("clientTimestamp", "desc"));
-  onSnapshot(q, (snapshot) => {
+  unsubSales = onSnapshot(q, (snapshot) => {
     allSales = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderMyTodaySales();
     renderAdminDashboard();
@@ -326,12 +415,124 @@ function listenToSales() {
 
 function listenToExpenses() {
   const q = query(collection(db, "expenses"), orderBy("clientTimestamp", "desc"));
-  onSnapshot(q, (snapshot) => {
+  unsubExpenses = onSnapshot(q, (snapshot) => {
     allExpenses = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderAdminDashboard();
   });
 }
 
+function listenToUsers() {
+  const q = query(collection(db, "users"), orderBy("clientTimestamp", "desc"));
+  unsubAllUsers = onSnapshot(q, (snapshot) => {
+    allUsers = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderUsersManagement();
+  });
+}
+
+// =========================================================================
+// 9. GESTIÓN DE REPARTIDORES (APROBAR SOLICITUDES / QUITAR ACCESO)
+// =========================================================================
+function renderUsersManagement() {
+  if (!isUserAdmin()) return;
+
+  const nonAdminUsers = allUsers.filter(
+    (u) => !authorizedAdminEmails.includes((u.email || u.id).toLowerCase())
+  );
+  const pendingUsers = nonAdminUsers.filter((u) => u.status === "pending");
+  const approvedUsers = nonAdminUsers.filter((u) => u.status === "approved");
+
+  // Actualizar contador de notificaciones en la pestaña
+  const navBadge = document.getElementById("pending-users-badge");
+  if (navBadge) {
+    navBadge.textContent = pendingUsers.length;
+    navBadge.classList.toggle("hidden", pendingUsers.length === 0);
+  }
+
+  const pendingCountEl = document.getElementById("pending-users-count");
+  const approvedCountEl = document.getElementById("approved-users-count");
+  if (pendingCountEl) pendingCountEl.textContent = `${pendingUsers.length} pendientes`;
+  if (approvedCountEl) approvedCountEl.textContent = `${approvedUsers.length} activos`;
+
+  // Render lista de solicitudes pendientes
+  const pendingListEl = document.getElementById("pending-users-list");
+  if (pendingListEl) {
+    pendingListEl.innerHTML =
+      pendingUsers
+        .map((u) => {
+          const email = u.email || u.id;
+          return `
+            <div class="user-access-card">
+              <div class="user-access-info">
+                <img src="${u.photoURL || "https://via.placeholder.com/40"}" alt="Foto" />
+                <div>
+                  <strong>${u.displayName || "Usuario"}</strong>
+                  <small class="muted">${email}</small>
+                </div>
+              </div>
+              <div class="action-btns">
+                <button class="btn-approve" onclick="window.adminApproveUser('${email}')">✓ Aprobar</button>
+                <button class="btn-del" onclick="window.adminRemoveUser('${email}', true)">✕ Rechazar</button>
+              </div>
+            </div>`;
+        })
+        .join("") || `<p class="muted">No hay solicitudes pendientes por aprobar.</p>`;
+  }
+
+  // Render lista de repartidores aprobados
+  const approvedListEl = document.getElementById("approved-users-list");
+  if (approvedListEl) {
+    approvedListEl.innerHTML =
+      approvedUsers
+        .map((u) => {
+          const email = u.email || u.id;
+          return `
+            <div class="user-access-card">
+              <div class="user-access-info">
+                <img src="${u.photoURL || "https://via.placeholder.com/40"}" alt="Foto" />
+                <div>
+                  <strong>${u.displayName || "Repartidor"}</strong>
+                  <small class="muted">${email}</small>
+                </div>
+              </div>
+              <button class="btn-del" onclick="window.adminRemoveUser('${email}', false)">Quitar acceso</button>
+            </div>`;
+        })
+        .join("") || `<p class="muted">Aún no hay repartidores aprobados.</p>`;
+  }
+}
+
+window.adminApproveUser = async (email) => {
+  if (!isUserAdmin()) return;
+  try {
+    await updateDoc(doc(db, "users", email.toLowerCase()), {
+      status: "approved",
+      approvedBy: currentUser.email.toLowerCase(),
+      approvedAt: serverTimestamp()
+    });
+    showToast(`✅ Acceso aprobado para ${email}`);
+  } catch (err) {
+    alert("Error al aprobar usuario: " + err.message);
+  }
+};
+
+window.adminRemoveUser = async (email, isRejection = false) => {
+  if (!isUserAdmin()) return;
+  const msg = isRejection
+    ? `¿Rechazar y eliminar la solicitud de ${email}?`
+    : `¿Quitar el acceso al sistema a ${email}? Su sesión se bloqueará de inmediato.`;
+  if (!confirm(msg)) return;
+
+  try {
+    await deleteDoc(doc(db, "users", email.toLowerCase()));
+    showToast(isRejection ? "Solicitud rechazada" : "🚫 Acceso revocado al repartidor");
+  } catch (err) {
+    alert("Error al actualizar acceso: " + err.message);
+  }
+};
+
+// =========================================================================
+// 10. REGISTRO DE GASTOS Y VENTAS DEL OPERADOR HOY
+// =========================================================================
 document.getElementById("expense-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!isUserAdmin()) return;
@@ -410,7 +611,7 @@ function renderMyTodaySales() {
 }
 
 // =========================================================================
-// 9. PANEL DE ADMINISTRADOR (FILTROS, BALANCE, ESTADÍSTICAS Y CSV)
+// 11. PANEL DE ADMINISTRADOR (FILTROS, BALANCE, ESTADÍSTICAS Y CSV)
 // =========================================================================
 document.querySelectorAll(".filter-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -478,7 +679,6 @@ function renderAdminDashboard() {
   const totalExpenses = filteredExpenses.reduce((acc, exp) => acc + (exp.amount || 0), 0);
   const netBalance = totalRevenue - totalExpenses;
 
-  // KPIs principales
   document.getElementById("kpi-revenue").textContent = `$${totalRevenue.toFixed(2)}`;
   document.getElementById("kpi-expenses").textContent = `$${totalExpenses.toFixed(2)}`;
 
@@ -491,10 +691,8 @@ function renderAdminDashboard() {
   document.getElementById("admin-record-count").textContent = `${filteredSales.length} ventas`;
   document.getElementById("admin-expense-count").textContent = `${filteredExpenses.length} gastos`;
 
-  // Render Sub-ventana de Estadísticas y Gráficas
   renderStatisticsAndCharts(filteredSales, filteredExpenses, totalRevenue, totalExpenses, totalUnits);
 
-  // Render desglose por tarifa
   const catContainer = document.getElementById("breakdown-categories");
   catContainer.innerHTML =
     Object.entries(categoryStats)
@@ -507,7 +705,6 @@ function renderAdminDashboard() {
       )
       .join("") || `<p class="muted">Sin datos en este período.</p>`;
 
-  // Render desglose por vendedor
   const selContainer = document.getElementById("breakdown-sellers");
   selContainer.innerHTML =
     Object.entries(sellerStats)
@@ -520,7 +717,6 @@ function renderAdminDashboard() {
       )
       .join("") || `<p class="muted">Sin datos en este período.</p>`;
 
-  // Tabla de gastos
   const expTbody = document.getElementById("admin-expenses-tbody");
   expTbody.innerHTML =
     filteredExpenses
@@ -545,7 +741,6 @@ function renderAdminDashboard() {
       })
       .join("") || `<tr><td colspan="5" class="text-center muted">No hay gastos registrados en este período.</td></tr>`;
 
-  // Tabla general de ventas
   const tbody = document.getElementById("admin-sales-tbody");
   tbody.innerHTML = filteredSales
     .map((s) => {
@@ -576,14 +771,13 @@ function renderAdminDashboard() {
 }
 
 // =========================================================================
-// 10. CÁLCULO DE INDICADORES Y GRÁFICAS (CHART.JS)
+// 12. CÁLCULO DE INDICADORES Y GRÁFICAS (CHART.JS)
 // =========================================================================
 function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses, totalUnits) {
   const avgUnitPrice = totalUnits > 0 ? totalRevenue / totalUnits : 0;
   const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue) * 100 : 0;
   const avgTicketGlobal = sales.length > 0 ? totalRevenue / sales.length : 0;
 
-  // Cálculo de Ticket Promedio dividido en Planta vs. Rutas
   let plantaTicketsCount = 0;
   let plantaTicketsMoney = 0;
   let rutaTicketsCount = 0;
@@ -819,7 +1013,7 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
 }
 
 // =========================================================================
-// 11. ELIMINACIÓN Y EDICIÓN DE VENTAS Y GASTOS (SOLO ADMINISTRADORES)
+// 13. ELIMINACIÓN Y EDICIÓN DE VENTAS Y GASTOS (SOLO ADMINISTRADORES)
 // =========================================================================
 window.adminDeleteSale = async (saleId) => {
   if (!isUserAdmin()) return;
@@ -984,7 +1178,7 @@ document.getElementById("form-edit-sale").addEventListener("submit", async (e) =
 });
 
 // =========================================================================
-// 12. EXPORTAR REPORTE A CSV Y NOTIFICACIONES
+// 14. EXPORTAR REPORTE A CSV Y NOTIFICACIONES
 // =========================================================================
 document.getElementById("btn-export-csv").addEventListener("click", () => {
   const filteredSales = filterByPeriod(allSales);
