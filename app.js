@@ -56,6 +56,7 @@ let editingSaleItems = [];
 
 // Instancias de gráficas Chart.js
 let trendChartInstance = null;
+let avgTicketChartInstance = null;
 let plantRoutesChartInstance = null;
 let expensesRoutesChartInstance = null;
 
@@ -191,7 +192,7 @@ document.getElementById("special-price-form").addEventListener("submit", (e) => 
   const price = parseFloat(document.getElementById("special-amount").value);
   const qty = parseInt(document.getElementById("special-qty").value, 10);
 
-  if (isNaN(price) || price <= 0 || isNaN(qty) || qty < 1) return;
+  if (isNaN(price) || price < 0 || isNaN(qty) || qty < 1) return;
 
   const category = labelInput ? `Especial (${labelInput})` : "Precio Especial";
   addItemToCart(category, price, qty);
@@ -580,7 +581,56 @@ function renderAdminDashboard() {
 function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses, totalUnits) {
   const avgUnitPrice = totalUnits > 0 ? totalRevenue / totalUnits : 0;
   const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue) * 100 : 0;
-  const avgTicket = sales.length > 0 ? totalRevenue / sales.length : 0;
+  const avgTicketGlobal = sales.length > 0 ? totalRevenue / sales.length : 0;
+
+  // Cálculo de Ticket Promedio dividido en Planta vs. Rutas
+  let plantaTicketsCount = 0;
+  let plantaTicketsMoney = 0;
+  let rutaTicketsCount = 0;
+  let rutaTicketsMoney = 0;
+
+  sales.forEach((s) => {
+    let salePlantaMoney = 0;
+    let saleRutaMoney = 0;
+    let hasPlanta = false;
+    let hasRuta = false;
+
+    (s.items || []).forEach((item) => {
+      const sub = (Number(item.qty) || 0) * (Number(item.unitPrice) || 0);
+      if (item.category === "Planta") {
+        salePlantaMoney += sub;
+        hasPlanta = true;
+      } else if (
+        item.category.includes("Ruta") ||
+        item.category.includes("Mayoreo") ||
+        item.category.includes("Menudeo")
+      ) {
+        saleRutaMoney += sub;
+        hasRuta = true;
+      } else {
+        const noteLower = (s.note || "").toLowerCase();
+        if (noteLower.includes("ruta")) {
+          saleRutaMoney += sub;
+          hasRuta = true;
+        } else {
+          salePlantaMoney += sub;
+          hasPlanta = true;
+        }
+      }
+    });
+
+    if (hasPlanta) {
+      plantaTicketsCount += 1;
+      plantaTicketsMoney += salePlantaMoney;
+    }
+    if (hasRuta) {
+      rutaTicketsCount += 1;
+      rutaTicketsMoney += saleRutaMoney;
+    }
+  });
+
+  const avgTicketPlanta = plantaTicketsCount > 0 ? plantaTicketsMoney / plantaTicketsCount : 0;
+  const avgTicketRuta = rutaTicketsCount > 0 ? rutaTicketsMoney / rutaTicketsCount : 0;
 
   document.getElementById("stat-avg-unit-price").textContent = `$${avgUnitPrice.toFixed(2)}`;
 
@@ -588,7 +638,11 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
   marginEl.textContent = `${profitMargin.toFixed(1)}%`;
   marginEl.className = profitMargin >= 0 ? "text-success" : "text-danger";
 
-  document.getElementById("stat-avg-ticket").textContent = `$${avgTicket.toFixed(2)}`;
+  const plantaEl = document.getElementById("stat-avg-ticket-planta");
+  const rutaEl = document.getElementById("stat-avg-ticket-ruta");
+  if (plantaEl) plantaEl.textContent = `$${avgTicketPlanta.toFixed(2)}`;
+  if (rutaEl) rutaEl.textContent = `$${avgTicketRuta.toFixed(2)}`;
+  document.getElementById("stat-avg-ticket").textContent = `$${avgTicketGlobal.toFixed(2)}`;
 
   if (typeof Chart === "undefined") return;
 
@@ -646,7 +700,51 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
     }
   });
 
-  // Gráfica 2: Mezcla de Ventas (Planta vs Rutas vs Especial)
+  // Gráfica 2: Ticket Promedio (Ventas en Planta vs Ventas en Ruta)
+  const avgTicketCanvas = document.getElementById("chart-avg-ticket");
+  if (avgTicketCanvas) {
+    if (avgTicketChartInstance) avgTicketChartInstance.destroy();
+    avgTicketChartInstance = new Chart(avgTicketCanvas, {
+      type: "bar",
+      data: {
+        labels: [
+          `Ventas en Planta (${plantaTicketsCount} envíos)`,
+          `Ventas en Ruta (${rutaTicketsCount} envíos)`
+        ],
+        datasets: [
+          {
+            label: "Ticket Promedio ($)",
+            data: [avgTicketPlanta, avgTicketRuta],
+            backgroundColor: ["#10b981", "#2563eb"],
+            borderRadius: 8,
+            barThickness: 48
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ` Promedio: $${Number(ctx.raw).toFixed(2)}`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (val) => `$${val}`
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Gráfica 3: Mezcla de Ventas (Planta vs Rutas vs Especial)
   let plantaMoney = 0;
   let ruta1Money = 0;
   let ruta2Money = 0;
@@ -689,7 +787,7 @@ function renderStatisticsAndCharts(sales, expenses, totalRevenue, totalExpenses,
     }
   });
 
-  // Gráfica 3: Distribución de Gastos (Gastos de Ruta vs Planta / Generales)
+  // Gráfica 4: Distribución de Gastos (Gastos de Ruta vs Planta / Generales)
   const expByCat = {};
   expenses.forEach((ex) => {
     expByCat[ex.category] = (expByCat[ex.category] || 0) + (ex.amount || 0);
@@ -810,7 +908,7 @@ function renderEditSaleItems() {
         <div class="edit-item-row">
           <input type="text" value="${item.category}" onchange="window.updateEditSaleField(${idx}, 'category', this.value)" placeholder="Tarifa / Concepto" required />
           <input type="number" min="1" value="${qty}" oninput="window.updateEditSaleField(${idx}, 'qty', this.value)" title="Cantidad" required />
-          <input type="number" step="0.01" min="0.5" value="${price}" oninput="window.updateEditSaleField(${idx}, 'unitPrice', this.value)" title="Precio unitario" required />
+          <input type="number" step="0.01" min="0" value="${price}" oninput="window.updateEditSaleField(${idx}, 'unitPrice', this.value)" title="Precio unitario" required />
           <button type="button" class="btn-del" onclick="window.removeEditSaleItem(${idx})">✕</button>
         </div>
       `;
@@ -862,10 +960,10 @@ document.getElementById("form-edit-sale").addEventListener("submit", async (e) =
       qty: parseInt(i.qty, 10) || 0,
       unitPrice: parseFloat(i.unitPrice) || 0
     }))
-    .filter((i) => i.qty > 0 && i.unitPrice > 0);
+    .filter((i) => i.qty > 0 && i.unitPrice >= 0);
 
   if (!id || cleanItems.length === 0) {
-    return alert("Verifica que las cantidades y precios sean mayores a 0.");
+    return alert("Verifica que las cantidades sean mayores a 0.");
   }
 
   const totalUnits = cleanItems.reduce((acc, i) => acc + i.qty, 0);

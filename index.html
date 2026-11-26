@@ -106,7 +106,7 @@
               </div>
               <div class="input-group">
                 <label for="special-amount">Precio Unitario ($)</label>
-                <input type="number" id="special-amount" step="0.01" min="0.5" placeholder="0.00" required />
+                <input type="number" id="special-amount" step="0.01" min="0" placeholder="0.00" required />
               </div>
               <div class="input-group small">
                 <label for="special-qty">Cant.</label>
@@ -353,6 +353,7 @@
         </div>
 
         <!-- SUB-VENTANA C: ESTADÍSTICAS Y GRÁFICAS -->
+        <!-- SUB-VENTANA C: ESTADÍSTICAS Y GRÁFICAS -->
         <div id="admin-sub-stats" class="admin-subtab-content">
           <!-- INDICADORES ANALÍTICOS -->
           <div class="stats-mini-grid">
@@ -367,26 +368,50 @@
               <small class="muted">(Ingresos − Gastos) ÷ Ingresos</small>
             </div>
             <div class="stat-pill">
-              <span>Ticket Promedio</span>
-              <strong id="stat-avg-ticket">$0.00</strong>
-              <small class="muted">Promedio cobrado por envío</small>
+              <span>Ticket Promedio (Planta / Rutas)</span>
+              <div class="split-stat-values">
+                <div>
+                  <small class="badge-planta">Planta</small>
+                  <strong id="stat-avg-ticket-planta">$0.00</strong>
+                </div>
+                <div class="split-divider"></div>
+                <div>
+                  <small class="badge-ruta">Rutas</small>
+                  <strong id="stat-avg-ticket-ruta">$0.00</strong>
+                </div>
+              </div>
+              <small class="muted">Global: <b id="stat-avg-ticket">$0.00</b></small>
             </div>
           </div>
 
-          <!-- GRÁFICA PRINCIPAL: TENDENCIA INGRESOS VS GASTOS -->
-          <section class="card">
-            <div class="card-header">
-              <div>
-                <h3>Tendencia: Ingresos vs. Gastos</h3>
-                <p class="subtitle">Comparativa cronológica de flujo de efectivo en el período filtrado</p>
+          <!-- FILA 1 DE GRÁFICAS: TENDENCIA Y TICKET PROMEDIO PLANTA VS RUTAS -->
+          <div class="charts-grid-trend-ticket">
+            <section class="card">
+              <div class="card-header">
+                <div>
+                  <h3>Tendencia: Ingresos vs. Gastos</h3>
+                  <p class="subtitle">Flujo de efectivo cronológico en el período filtrado</p>
+                </div>
               </div>
-            </div>
-            <div class="canvas-wrapper-lg">
-              <canvas id="chart-trend"></canvas>
-            </div>
-          </section>
+              <div class="canvas-wrapper-lg">
+                <canvas id="chart-trend"></canvas>
+              </div>
+            </section>
 
-          <!-- GRÁFICAS COMPARATIVAS: MEZCLA PLANTA VS RUTAS Y GASTOS VS RUTAS -->
+            <section class="card">
+              <div class="card-header">
+                <div>
+                  <h3>Ticket Promedio: Planta vs. Rutas</h3>
+                  <p class="subtitle">Gasto promedio por envío según canal</p>
+                </div>
+              </div>
+              <div class="canvas-wrapper-lg">
+                <canvas id="chart-avg-ticket"></canvas>
+              </div>
+            </section>
+          </div>
+
+          <!-- FILA 2 DE GRÁFICAS: MEZCLA PLANTA VS RUTAS Y GASTOS VS RUTAS -->
           <div class="charts-grid-2">
             <section class="card">
               <div class="card-header">

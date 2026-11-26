@@ -915,3 +915,61 @@ select:focus {
   gap: 0.6rem;
   margin-top: 0.5rem;
 }
+
+/* INDICADOR DIVIDIDO TICKET PROMEDIO Y GRÁFICA COMPARATIVA */
+.split-stat-values {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 0.35rem 0;
+}
+
+.split-stat-values > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.split-stat-values strong {
+  font-size: 1.35rem;
+  margin: 0.1rem 0 0 0;
+}
+
+.split-divider {
+  width: 1px;
+  height: 36px;
+  background: var(--border);
+}
+
+.badge-planta {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #065f46;
+  background: #d1fae5;
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.badge-ruta {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #1e40af;
+  background: #dbeafe;
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.charts-grid-trend-ticket {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .charts-grid-trend-ticket {
+    grid-template-columns: 1fr;
+  }
+}
